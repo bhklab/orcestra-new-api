@@ -6,12 +6,9 @@ authors = ["mattbocc <matthew.boccalon@live.ca>"]
 channels = ["conda-forge"]
 platforms = ["osx-arm64"]
 
-[tool.pixi]
-python = "3.10"
-
 [dependencies]
 fastapi = ">=0.111.0,<0.112"
 uvicorn = ">=0.30.1,<0.31"
 
-[tool.pixi.scripts]
+[tasks]
 start = "uvicorn main:app --reload"
