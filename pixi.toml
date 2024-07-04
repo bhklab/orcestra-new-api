@@ -9,6 +9,9 @@ platforms = ["osx-arm64"]
 [dependencies]
 fastapi = ">=0.111.0,<0.112"
 uvicorn = ">=0.30.1,<0.31"
+git = ">=2.45.1,<2.46"
+motor = ">=3.4.0,<3.5"
+python-dotenv = ">=1.0.1,<1.1"
 
 [tasks]
 start = "uvicorn main:app --reload"
