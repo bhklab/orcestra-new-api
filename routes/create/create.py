@@ -46,8 +46,7 @@ async def create_pipeline(data: CreatePipeline) -> PipelineOut:
         raise ValueError(f"Missing required field: {e}")
     
     # validate git_url
-    if not await pipeline.validate_url():
-        raise HTTPException(status_code=400, detail='Invalid git url')
+    await pipeline.validate_url()
     
     # clone pipeline
     try:
@@ -60,7 +59,13 @@ async def create_pipeline(data: CreatePipeline) -> PipelineOut:
         await pipeline.validate_local_file_paths()
     except Exception as e:
         await pipeline.delete_local()
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=(f"Error while validating local file paths: {e}"))
     
     # add to database
-    return await add_pipeline(pipeline, snakemake_pipelines)
+    pipeline_out = await add_pipeline(pipeline, snakemake_pipelines)
+
+    raise HTTPException(status_code=200, detail={"cloneable": "Pipeline cloned successfully",
+                                                 "message": "Pipeline passed configuration checks",
+                                                 "directory": str(pipeline.fs_path),
+                                                 "pipeline": pipeline_out.dict()})
+    

@@ -15,6 +15,7 @@ from pydantic import (
 
 from core.git import validate_github_repo, clone_github_repo
 from models.common import PyObjectId
+from fastapi import HTTPException
 
 class SnakemakePipeline(BaseModel):
     git_url: str
@@ -51,7 +52,7 @@ class CreatePipeline(SnakemakePipeline):
         return Path.home() / "pipelines" / self.pipeline_name
     
     async def validate_url(self) -> bool:
-        return await validate_github_repo(self.git_url)
+        await validate_github_repo(self.git_url)
     
     async def clone(self) -> Repo:
         return await clone_github_repo(self.git_url, self.fs_path)
@@ -67,19 +68,21 @@ class CreatePipeline(SnakemakePipeline):
         Raises:
             AssertionError: If any of the paths do not exist.
         """
+        try:
+            assert self.fs_path.exists(), f"Path: {self.fs_path} does not exist."
 
-        assert self.fs_path.exists(), f"Path: {self.fs_path} does not exist."
-
-        assert (
-            (self.fs_path / self.snakefile_path).exists()
-        ), f"Snakefile: {self.snakefile_path} does not exist."
-        assert (
-            (self.fs_path / self.config_file_path).exists()
-        ), f"Config file: {self.config_file_path} does not exist."
-        assert (
-            (self.fs_path / self.conda_env_file_path).exists()
-        ), f"Conda env file: {self.conda_env_file_path} does not exist."
-        return True
+            assert (
+                (self.fs_path / self.snakefile_path).exists()
+            ), f"Snakefile: {self.snakefile_path} does not exist."
+            assert (
+                (self.fs_path / self.config_file_path).exists()
+            ), f"Config file: {self.config_file_path} does not exist."
+            assert (
+                (self.fs_path / self.conda_env_file_path).exists()
+            ), f"Conda env file: {self.conda_env_file_path} does not exist."
+            return True
+        except AssertionError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     
     async def pull(self) -> None:
         repo = await pull_latest_pipeline(self.fs_path)

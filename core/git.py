@@ -1,7 +1,9 @@
 from pathlib import Path
 
 import aiohttp
+from aiohttp import InvalidURL
 from git import GitCommandError, Repo
+from fastapi import HTTPException
 
 async def validate_github_repo(url: str) -> bool:
     """This function validates a GitHub repository.
@@ -13,11 +15,15 @@ async def validate_github_repo(url: str) -> bool:
       bool: True if the repository is valid (status code 200), False otherwise.
 
     """
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            if response.status == 200:
-                return True
-            return False
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    return True
+    except InvalidURL:
+        raise HTTPException(status_code=400, detail="Clone failed: Invalid GitHub URL")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
         
 async def clone_github_repo(url: str, dest: Path) -> Repo:
     """Clone a GitHub repository.
