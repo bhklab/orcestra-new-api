@@ -6,6 +6,7 @@ from typing import (
     Optional,
 )
 
+from core.exec import execute_command
 from git import Repo
 from pydantic import (
     BaseModel,
@@ -16,6 +17,8 @@ from pydantic import (
 from core.git import validate_github_repo, clone_github_repo
 from models.common import PyObjectId
 from fastapi import HTTPException
+import yaml
+import os
 
 class SnakemakePipeline(BaseModel):
     git_url: str
@@ -32,6 +35,7 @@ class SnakemakePipeline(BaseModel):
 
 class CreatePipeline(SnakemakePipeline):
     pipeline_name: str
+    conda_env_name: Optional[str] = None
     created_at: Optional[str] = datetime.now(timezone.utc).isoformat()
     last_updated_at: Optional[str] = datetime.now(timezone.utc).isoformat()
 
@@ -82,7 +86,31 @@ class CreatePipeline(SnakemakePipeline):
             ), f"Conda env file: {self.conda_env_file_path} does not exist."
             return True
         except AssertionError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail="hello")
+    
+
+    async def get_env_name(self):
+        env_file_path = os.path.join(self.fs_path, self.conda_env_file_path)
+        with open(env_file_path, 'r') as file:
+            env_data = yaml.safe_load(file)
+            
+        env_name = env_data.get('name')
+            
+        if not env_name:
+            raise HTTPException(status_code=400, detail="Environment name not found in yaml file")
+            
+        return env_name
+    
+    
+    async def env_exists(self, env_name):
+        command = "conda env list"
+        exit_status, output, error = await execute_command(command)
+
+        if exit_status != 0:
+            raise HTTPException(status_code=400, detail=f"Error getting conda environments: {error.decode()}")
+
+        env_exists = env_name in output
+        return env_exists
     
     async def pull(self) -> None:
         repo = await pull_latest_pipeline(self.fs_path)
@@ -99,14 +127,22 @@ class CreatePipeline(SnakemakePipeline):
     async def dry_run(self) -> None:
         """Dry run the pipeline.
 
-        Should be able to run `snakemake --dry-run`
+        Should be able to run `snakemake -n --use-conda`
         make use of the `execute_command` function from `orcestrator.core.exec`
 
         Notes:
         - the prod environment has snakemake & conda installed already
         - we expect the curator to have the conda env file as well
         """
-        pass
+        cwd = os.getcwd()
+        os.chdir(self.fs_path)
+        command = f"snakemake -n --use-conda"
+        exit_status, output, error = await execute_command(command)
+        os.chdir(cwd)
+        if exit_status != 0:
+            raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")
+
+        print(output)
 
 class UpdatePipeline(SnakemakePipeline):
     # remove the pipeline_name from the update
@@ -118,6 +154,7 @@ class PipelineOut(SnakemakePipeline):
     id: PyObjectId = Field(alias="_id", default=None)
 
     # If needed, add extra fields that should be included in the response
+    conda_env_name: Optional[str] = None
     created_at: Optional[str] = None
     last_updated_at: Optional[str] = None
 
