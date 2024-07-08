@@ -40,10 +40,10 @@ async def create_pipeline(data: CreatePipeline) -> PipelineOut:
     try:
         pipeline = CreatePipeline(**data)
         if await git_url_exists(pipeline.git_url, snakemake_pipelines):
-            raise ValueError("Git url already exists in database")
+            raise HTTPException(status_code=400, detail="Git url already exists in database")
         
     except KeyError as e:
-        raise ValueError(f"Missing required field: {e}")
+        raise HTTPException(status_code=400, detail=f"Missing required field: {e}")
     
     # validate git_url
     await pipeline.validate_url()
