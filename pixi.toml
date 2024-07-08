@@ -4,14 +4,16 @@ version = "0.1.0"
 description = "Add a short description here"
 authors = ["mattbocc <matthew.boccalon@live.ca>"]
 channels = ["conda-forge"]
-platforms = ["osx-arm64"]
+platforms = ["osx-arm64", "win-64"]
 
 [dependencies]
 fastapi = ">=0.111.0,<0.112"
 uvicorn = ">=0.30.1,<0.31"
-git = ">=2.45.1,<2.46"
+git = ">=2.45.2,<2.46"
 motor = ">=3.4.0,<3.5"
 python-dotenv = ">=1.0.1,<1.1"
+aiohttp = ">=3.9.5,<3.10"
+gitpython = ">=3.1.43,<3.2"
 
 [tasks]
 start = "uvicorn main:app --reload"
