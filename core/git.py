@@ -5,7 +5,7 @@ from aiohttp import InvalidURL
 from git import GitCommandError, Repo
 from fastapi import HTTPException
 
-#Needs to be addressed in order to check valid web page but not a valid github respository (404 respository)
+
 async def validate_github_repo(url: str) -> bool:
     """This function validates a GitHub repository.
 
@@ -16,11 +16,24 @@ async def validate_github_repo(url: str) -> bool:
       bool: True if the repository is valid (status code 200), False otherwise.
 
     """
+    if not url.endswith(".git"):
+        raise HTTPException(status_code=400, detail="Invalid GitHub URL")
+    elif not url.startswith("https://github.com"):
+        raise HTTPException(status_code=400, detail="Invalid GitHub URL")
+    
+    link = url.split("/")
+    owner = link[-2]
+    repo = link[-1][:-4]
+    
+    api_url = f"https://api.github.com/repos/{owner}/{repo}"
+
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
+            async with session.get(api_url) as response:
                 if response.status == 200:
                     return True
+                elif response.status == 404:
+                    raise HTTPException(status_code=404, detail="Repository not found")
     except InvalidURL:
         raise HTTPException(status_code=400, detail="Invalid GitHub URL")
     except Exception as e:

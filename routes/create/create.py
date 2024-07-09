@@ -56,22 +56,14 @@ async def create_pipeline(data: CreatePipeline) -> PipelineOut:
     await pipeline.validate_local_file_paths()
     
 	# get environment name in conda .yaml
-    # env_name = await pipeline.get_env_name()
+    env_name = await pipeline.get_env_name()
 
     # check if environment exists
-    # try:
-    #     if not await pipeline.env_exists(env_name):
-    #         pipeline.conda_env_name = env_name
-    # except Exception as e:
-    #     await pipeline.delete_local()
-    #     raise HTTPException(status_code=400, detail=(f"Environment name already exists: {e}"))
+    await pipeline.env_exists(env_name)
+    pipeline.conda_env_name = env_name
     
     # perform a dry run of the pipeline
-    try:
-        await pipeline.dry_run()
-    except Exception as e:
-        # await pipeline.delete_local()
-        raise HTTPException(status_code=400, detail=(f"Error performing dry run: {e}"))
+    await pipeline.dry_run()
 
     # add to database
     pipeline_out = await add_pipeline(pipeline, snakemake_pipelines)

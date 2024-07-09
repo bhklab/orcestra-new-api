@@ -106,6 +106,7 @@ class CreatePipeline(SnakemakePipeline):
         exit_status, output, error = await execute_command(command)
 
         if exit_status != 0:
+            await self.delete_local()
             raise HTTPException(status_code=400, detail=f"Error getting conda environments: {error.decode()}")
 
         env_exists = env_name in output
@@ -139,6 +140,7 @@ class CreatePipeline(SnakemakePipeline):
         exit_status, output, error = await execute_command(command)
         os.chdir(cwd)
         if exit_status != 0:
+            await self.delete_local()
             raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")
 
         print(output)
