@@ -36,7 +36,6 @@ class SnakemakePipeline(BaseModel):
 
 class CreatePipeline(SnakemakePipeline):
     pipeline_name: str
-    conda_env_name: Optional[str] = None
     created_at: Optional[str] = datetime.now(timezone.utc).isoformat()
     last_updated_at: Optional[str] = datetime.now(timezone.utc).isoformat()
 
@@ -124,7 +123,7 @@ class CreatePipeline(SnakemakePipeline):
     async def delete_local(self) -> None:
         rmtree(self.fs_path)
 
-    async def dry_run(self) -> None:
+    async def dry_run(self) -> str:
         """Dry run the pipeline.
 
         Should be able to run `snakemake -n --use-conda`
@@ -134,24 +133,18 @@ class CreatePipeline(SnakemakePipeline):
         - the prod environment has snakemake & conda installed already
         - we expect the curator to have the conda env file as well
         """
-        # extract Snakefile name from path to use in bash execution
-        match = re.search(r'[^/]*$', self.snakefile_path)
-        snakefile_name = self.snakefile_path
-        if match:
-            snakefile_name = match.group(0)
-        
-        command = f"snakemake -s {snakefile_name} -n --use-conda"
 
+        command = f"snakemake -s {self.snakefile_path} -n --use-conda"
+        cwd = f"{self.fs_path}"
 
-        # remove /Snakefile from end of snakefile_path to allow traversal to parent folder
-        snakefile_path = re.sub(r'/[^/]*$', '', self.snakefile_path)
-        if (snakefile_path == self.snakefile_path): # if snakefile isn't in a sub directory make value empty
-            snakefile_path = ""
-        
-        cwd = f"{self.fs_path}/{snakefile_path}"
-        
         try:
-            exit_status, output, error = await execute_command(command, cwd)
+            output = await execute_command(command, cwd)
+
+            # format output
+            output = str(output).replace("\\n", "")
+            output = output.replace("\\", "")
+            
+            return output
         except Exception as error:
             await self.delete_local()
             raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")   
