@@ -19,6 +19,7 @@ from models.common import PyObjectId
 from fastapi import HTTPException
 import yaml
 import os
+import re
 
 class SnakemakePipeline(BaseModel):
     git_url: str
@@ -103,7 +104,7 @@ class CreatePipeline(SnakemakePipeline):
     
     async def env_exists(self, env_name):
         command = "conda env list"
-        exit_status, output, error = await execute_command(command)
+        exit_status, output, error = await execute_command(command, self.fs_path)
 
         if exit_status != 0:
             raise HTTPException(status_code=400, detail=f"Error getting conda environments: {error.decode()}")
@@ -117,8 +118,8 @@ class CreatePipeline(SnakemakePipeline):
 
         try:
             await self.validate_local_file_paths()
-        except AssertionError as ae:
-            raise Exception(f"Error validating local paths: {ae}")
+        except AssertionError as error:
+            raise Exception(f"Error validating local paths: {error}")
 
     async def delete_local(self) -> None:
         rmtree(self.fs_path)
@@ -133,20 +134,31 @@ class CreatePipeline(SnakemakePipeline):
         - the prod environment has snakemake & conda installed already
         - we expect the curator to have the conda env file as well
         """
-        cwd = os.getcwd()
-        os.chdir(self.fs_path)
-        command = f"snakemake -n --use-conda"
-        exit_status, output, error = await execute_command(command)
-        os.chdir(cwd)
-        if exit_status != 0:
-            raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")
+        # extract Snakefile name from path to use in bash execution
+        match = re.search(r'[^/]*$', self.snakefile_path)
+        snakefile_name = self.snakefile_path
+        if match:
+            snakefile_name = match.group(0)
+        
+        command = f"snakemake -s {snakefile_name} -n --use-conda"
 
-        print(output)
 
+        # remove /Snakefile from end of snakefile_path to allow traversal to parent folder
+        snakefile_path = re.sub(r'/[^/]*$', '', self.snakefile_path)
+        if (snakefile_path == self.snakefile_path): # if snakefile isn't in a sub directory make value empty
+            snakefile_path = ""
+        
+        cwd = f"{self.fs_path}/{snakefile_path}"
+        
+        try:
+            exit_status, output, error = await execute_command(command, cwd)
+        except Exception as error:
+            await self.delete_local()
+            raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")   
+        
 class UpdatePipeline(SnakemakePipeline):
     # remove the pipeline_name from the update
     pass
-
 
 class PipelineOut(SnakemakePipeline):
     pipeline_name: str

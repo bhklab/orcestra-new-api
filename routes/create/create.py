@@ -29,9 +29,9 @@ async def add_pipeline(
         new_pipeline = pipeline.model_dump()
         result = await collection.insert_one(new_pipeline)
         new_pipeline['id'] = result.inserted_id
-    except ValueError as e:
+    except ValueError as error:
         await pipeline.delete_local()
-        raise HTTPException(status_code=401, detail=str(e))
+        raise HTTPException(status_code=401, detail=str(error))
    
     return PipelineOut(**new_pipeline)
 
@@ -41,9 +41,9 @@ async def create_pipeline(data: CreatePipeline) -> PipelineOut:
         pipeline = CreatePipeline(**data)
         if await git_url_exists(pipeline.git_url, snakemake_pipelines):
             raise HTTPException(status_code=400, detail="Git url already exists in database")
-        
-    except KeyError as e:
-        raise HTTPException(status_code=400, detail=f"Missing required field: {e}")
+
+    except KeyError as error:
+        raise HTTPException(status_code=400, detail=f"Missing required field: {error}")
     
     # validate git_url
     await pipeline.validate_url()
@@ -55,29 +55,18 @@ async def create_pipeline(data: CreatePipeline) -> PipelineOut:
     # validate file paths exist
     await pipeline.validate_local_file_paths()
     
-	# get environment name in conda .yaml
-    # env_name = await pipeline.get_env_name()
-
-    # check if environment exists
-    # try:
-    #     if not await pipeline.env_exists(env_name):
-    #         pipeline.conda_env_name = env_name
-    # except Exception as e:
-    #     await pipeline.delete_local()
-    #     raise HTTPException(status_code=400, detail=(f"Environment name already exists: {e}"))
-    
     # perform a dry run of the pipeline
     try:
         await pipeline.dry_run()
     except Exception as e:
-        # await pipeline.delete_local()
+        await pipeline.delete_local()
         raise HTTPException(status_code=400, detail=(f"Error performing dry run: {e}"))
 
     # add to database
     pipeline_out = await add_pipeline(pipeline, snakemake_pipelines)
 
-    raise HTTPException(status_code=200, detail={"cloneable": "Pipeline cloned successfully",
-                                                 "configurations": "Pipeline passed configuration checks",
-                                                 "directory": str(pipeline.fs_path),
-                                                 "pipeline": pipeline_out.model_dump()})
+    raise HTTPException(status_code=200, detail={"clone_status": "Pipeline cloned successfully",
+                                                 "configuration_checks": "Pipeline passed configuration checks",
+                                                 "pipeline_directory": str(pipeline.fs_path),
+                                                 "pipeline_database_entry": pipeline_out.model_dump()})
     
