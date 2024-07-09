@@ -58,8 +58,8 @@ class CreatePipeline(SnakemakePipeline):
     async def validate_url(self) -> bool:
         await validate_github_repo(self.git_url)
     
-    async def clone(self) -> Repo:
-        return await clone_github_repo(self.git_url, self.fs_path)
+    async def clone(self):
+        await clone_github_repo(self.git_url, self.fs_path)
     
     async def validate_local_file_paths(self) -> bool:
         """After cloning, need to validate that the paths provided exist.
@@ -72,21 +72,20 @@ class CreatePipeline(SnakemakePipeline):
         Raises:
             AssertionError: If any of the paths do not exist.
         """
-        try:
-            assert self.fs_path.exists(), f"Path: {self.fs_path} does not exist."
-
-            assert (
-                (self.fs_path / self.snakefile_path).exists()
-            ), f"Snakefile: {self.snakefile_path} does not exist."
-            assert (
-                (self.fs_path / self.config_file_path).exists()
-            ), f"Config file: {self.config_file_path} does not exist."
-            assert (
-                (self.fs_path / self.conda_env_file_path).exists()
-            ), f"Conda env file: {self.conda_env_file_path} does not exist."
-            return True
-        except AssertionError as e:
-            raise HTTPException(status_code=400, detail="hello")
+        
+        if not self.fs_path.exists():
+            await self.delete_local()
+            raise HTTPException(status_code=400, detail=f"Path: '{self.fs_path}' does not exist.")
+        if not (self.fs_path / self.snakefile_path).exists():
+            await self.delete_local()
+            raise HTTPException(status_code=400, detail=f"Snakefile: '{self.snakefile_path}' does not exist.")
+        if not (self.fs_path / self.config_file_path).exists():
+            await self.delete_local()
+            raise HTTPException(status_code=400, detail=f"Config file: '{self.config_file_path}' does not exist.")
+        if not (self.fs_path / self.conda_env_file_path).exists():
+            await self.delete_local()
+            raise HTTPException(status_code=400, detail=f"Conda configuration file: '{self.conda_env_file_path}' does not exist.")
+        return True
     
 
     async def get_env_name(self):

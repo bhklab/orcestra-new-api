@@ -5,6 +5,7 @@ from aiohttp import InvalidURL
 from git import GitCommandError, Repo
 from fastapi import HTTPException
 
+#Needs to be addressed in order to check valid web page but not a valid github respository (404 respository)
 async def validate_github_repo(url: str) -> bool:
     """This function validates a GitHub repository.
 
@@ -21,7 +22,7 @@ async def validate_github_repo(url: str) -> bool:
                 if response.status == 200:
                     return True
     except InvalidURL:
-        raise HTTPException(status_code=400, detail="Clone failed: Invalid GitHub URL")
+        raise HTTPException(status_code=400, detail="Invalid GitHub URL")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
         
@@ -40,11 +41,11 @@ async def clone_github_repo(url: str, dest: Path) -> Repo:
       GitCommandError: If there is an error while cloning the repository.
       Exception: If there is an unexpected error during the cloning process.
     """
-    # check if dest exists
+    # check if folder already exists
     if not dest.exists():
         dest.mkdir(parents=True)
     else:
-        raise Exception(f'Directory: {dest} already exists.')
+        raise HTTPException(status_code=400, detail=f"Directory: {dest} already exists. Remove from VM or change pipeline name")
     
     try:
         return Repo.clone_from(url, dest)

@@ -31,7 +31,7 @@ async def add_pipeline(
         new_pipeline['id'] = result.inserted_id
     except ValueError as e:
         await pipeline.delete_local()
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=401, detail=str(e))
    
     return PipelineOut(**new_pipeline)
 
@@ -49,40 +49,35 @@ async def create_pipeline(data: CreatePipeline) -> PipelineOut:
     await pipeline.validate_url()
     
     # clone pipeline
-    try:
-        await pipeline.clone()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    await pipeline.clone()
+
     
     # validate file paths exist
-    try:
-        await pipeline.validate_local_file_paths()
-    except Exception as e:
-        await pipeline.delete_local()
-        raise HTTPException(status_code=400, detail=(f"Error while validating local file paths: {e}"))
+    await pipeline.validate_local_file_paths()
     
-    env_name = await pipeline.get_env_name()
+	# get environment name in conda .yaml
+    # env_name = await pipeline.get_env_name()
 
     # check if environment exists
-    try:
-        if not await pipeline.env_exists(env_name):
-            pipeline.conda_env_name = env_name
-    except Exception as e:
-        await pipeline.delete_local()
-        raise HTTPException(status_code=400, detail=(f"Environment name already exists: {e}"))
+    # try:
+    #     if not await pipeline.env_exists(env_name):
+    #         pipeline.conda_env_name = env_name
+    # except Exception as e:
+    #     await pipeline.delete_local()
+    #     raise HTTPException(status_code=400, detail=(f"Environment name already exists: {e}"))
     
-     # perform a dry run of the pipeline
+    # perform a dry run of the pipeline
     try:
         await pipeline.dry_run()
     except Exception as e:
-        await pipeline.delete_local()
+        # await pipeline.delete_local()
         raise HTTPException(status_code=400, detail=(f"Error performing dry run: {e}"))
 
     # add to database
     pipeline_out = await add_pipeline(pipeline, snakemake_pipelines)
 
     raise HTTPException(status_code=200, detail={"cloneable": "Pipeline cloned successfully",
-                                                 "message": "Pipeline passed configuration checks",
+                                                 "configurations": "Pipeline passed configuration checks",
                                                  "directory": str(pipeline.fs_path),
-                                                 "pipeline": pipeline_out.dict()})
+                                                 "pipeline": pipeline_out.model_dump()})
     
