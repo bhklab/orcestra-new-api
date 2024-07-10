@@ -5,6 +5,7 @@ from aiohttp import InvalidURL
 from git import GitCommandError, Repo
 from fastapi import HTTPException
 
+
 async def validate_github_repo(url: str) -> bool:
     """This function validates a GitHub repository.
 
@@ -15,15 +16,28 @@ async def validate_github_repo(url: str) -> bool:
       bool: True if the repository is valid (status code 200), False otherwise.
 
     """
+    if not url.endswith(".git"):
+        raise HTTPException(status_code=400, detail="Invalid GitHub URL")
+    elif not url.startswith("https://github.com"):
+        raise HTTPException(status_code=400, detail="Invalid GitHub URL")
+    
+    link = url.split("/")
+    owner = link[-2]
+    repo = link[-1][:-4]
+    
+    api_url = f"https://api.github.com/repos/{owner}/{repo}"
+
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
+            async with session.get(api_url) as response:
                 if response.status == 200:
                     return True
+                elif response.status == 404:
+                    raise HTTPException(status_code=404, detail="Repository not found")
     except InvalidURL:
-        raise HTTPException(status_code=400, detail="Clone failed: Invalid GitHub URL")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="Invalid GitHub URL")
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=str(error))
         
 async def clone_github_repo(url: str, dest: Path) -> Repo:
     """Clone a GitHub repository.
@@ -40,15 +54,15 @@ async def clone_github_repo(url: str, dest: Path) -> Repo:
       GitCommandError: If there is an error while cloning the repository.
       Exception: If there is an unexpected error during the cloning process.
     """
-    # check if dest exists
+    # check if folder already exists
     if not dest.exists():
         dest.mkdir(parents=True)
     else:
-        raise Exception(f'Directory: {dest} already exists.')
+        raise HTTPException(status_code=400, detail=f"Directory: {dest} already exists. Change your pipeline name or remove from VM")
     
     try:
         return Repo.clone_from(url, dest)
     except GitCommandError as git_error:
-        raise git_error
-    except Exception as e:
-        raise e
+        raise HTTPException(status_code=400, detail=f"The repository was not clonable due to a git command error: {git_error}")
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"The repository was not clonable: {error}")
