@@ -60,24 +60,16 @@ class CreatePipeline(SnakemakePipeline):
         return Path.home() / "pipelines" / self.pipeline_name
     
     async def validate_url(self) -> bool:
-        """First, we need to validate that the provided Git URL is correct
-           and it is associated with a repository.
+        """Confirm pipeline's Git URL is a valid repository.
 
            Calls `validate_github_repo` function from `core.git`.
-
-        Returns:
-            bool: True if Git URL is valid.
-
-        Raises:
-            HTTPException: If Git URL is invalid.
-            HTTPException: If a valid repository is not found.
         """
 
         await validate_github_repo(self.git_url)
     
 
     async def git_url_exists(self, collection: AsyncIOMotorCollection) -> bool:
-        """Next, we need to check whether the provided Git URL already exists in db.
+        """Verify pipeline's Git URL is not already in database.
 
         Returns:
             bool: True if Git URL does exist and False otherwise
@@ -90,26 +82,18 @@ class CreatePipeline(SnakemakePipeline):
     
 
     async def clone(self):
-        """After Git URL validation, the repository needs to be cloned.
+        """Clone GitHub repository.
 
            Calls `clone_github_rep` function from `core.git`.
-        
-        Returns: 
-            Repo: The cloned repository object.
-
-        Raises:
-            Exception: If the destination directory already exists.
-            GitCommandError: If there is an error while cloning the repository.
-            Exception: If there is an unexpected error during the cloning process.
         """
 
         await clone_github_repo(self.git_url, self.fs_path)
     
 
     async def validate_local_file_paths(self) -> bool:
-        """After cloning, need to validate that the paths provided exist.
+        """Validate provided file paths exist in cloned repository.
 
-        When creating, we ask for snakefile, config and conda env file paths
+        When creating, user enters snakefile, config and conda env file paths.
 
         Returns:
             bool: True if all paths exist
@@ -133,8 +117,7 @@ class CreatePipeline(SnakemakePipeline):
         return True
 
     async def delete_local(self) -> None:
-        """At any point in configuration process if there is an error, 
-           we want to delete the local cloned repository.
+        """Delete cloned repository if an error is encountered.
            
            This ensures there are no unused repositories.
         """
@@ -175,7 +158,7 @@ class CreatePipeline(SnakemakePipeline):
     
 
     async def add_pipeline(self, collection: AsyncIOMotorCollection,) -> None:
-        """After all the above steps, the pipeline entry is added to the db.
+        """Add pipeline entry into the database.
 
         Raises:
             HTTPException: If there is an error adding entry to db.
