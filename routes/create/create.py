@@ -45,12 +45,11 @@ async def create_pipeline(data: CreatePipeline) -> None:
     
     # clone pipeline
     await pipeline.clone()
-
     
     # validate file paths exist
     await pipeline.validate_local_file_paths()
     
-    # perform a dry run of the pipeline and recieve terminal output
+    # perform a dry run of the pipeline and recieve output
     dry_run_status = await pipeline.dry_run()
 
     # if dry-run contains unsucessful output throw exception
