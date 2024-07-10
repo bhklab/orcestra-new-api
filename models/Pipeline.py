@@ -131,41 +131,6 @@ class CreatePipeline(SnakemakePipeline):
             await self.delete_local()
             raise HTTPException(status_code=400, detail=f"Conda configuration file: '{self.conda_env_file_path}' does not exist.")
         return True
-    
-
-    # async def get_env_name(self):
-
-    #     env_file_path = os.path.join(self.fs_path, self.conda_env_file_path)
-    #     with open(env_file_path, 'r') as file:
-    #         env_data = yaml.safe_load(file)
-            
-    #     env_name = env_data.get('name')
-            
-    #     if not env_name:
-    #         raise HTTPException(status_code=400, detail="Environment name not found in yaml file")
-            
-    #     return env_name
-    
-    
-    # async def env_exists(self, env_name):
-    #     command = "conda env list"
-    #     exit_status, output, error = await execute_command(command, self.fs_path)
-
-    #     if exit_status != 0:
-    #         await self.delete_local()
-    #         raise HTTPException(status_code=400, detail=f"Error getting conda environments: {error.decode()}")
-
-    #     env_exists = env_name in output
-    #     return env_exists
-    
-    # async def pull(self) -> None:
-    #     repo = await pull_latest_pipeline(self.fs_path)
-    #     _commit_history = repo.iter_commits()  # unused for now
-
-    #     try:
-    #         await self.validate_local_file_paths()
-    #     except AssertionError as error:
-    #         raise Exception(f"Error validating local paths: {error}")
 
     async def delete_local(self) -> None:
         """At any point in configuration process if there is an error, 
@@ -222,9 +187,9 @@ class CreatePipeline(SnakemakePipeline):
             await self.delete_local()
             raise HTTPException(status_code=401, detail=str(error))
         
-# class UpdatePipeline(SnakemakePipeline):
-#     # remove the pipeline_name from the update
-#     pass
+class UpdatePipeline(SnakemakePipeline):
+    # remove the pipeline_name from the update
+    pass
 
 class PipelineOut(SnakemakePipeline):
     pipeline_name: str
