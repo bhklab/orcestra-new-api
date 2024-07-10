@@ -17,9 +17,11 @@ from pydantic import (
 from core.git import validate_github_repo, clone_github_repo
 from models.common import PyObjectId
 from fastapi import HTTPException
-import yaml
-import os
-import re
+from motor.motor_asyncio import AsyncIOMotorCollection
+from db import get_database
+
+database = get_database()
+snakemake_pipelines_collection = database["snakemake_pipeline"]
 
 class SnakemakePipeline(BaseModel):
     git_url: str
@@ -53,18 +55,61 @@ class CreatePipeline(SnakemakePipeline):
     }
     @property
     def fs_path(self) -> Path:
+        """Returns the path for the pipeline's directory.
+        """
         return Path.home() / "pipelines" / self.pipeline_name
     
     async def validate_url(self) -> bool:
+        """First, we need to validate that the provided Git URL is correct
+           and it is associated with a repository.
+
+           Calls `validate_github_repo` function from `core.git`.
+
+        Returns:
+            bool: True if Git URL is valid.
+
+        Raises:
+            HTTPException: If Git URL is invalid.
+            HTTPException: If a valid repository is not found.
+        """
+
         await validate_github_repo(self.git_url)
     
+
+    async def git_url_exists(self, collection: AsyncIOMotorCollection) -> bool:
+        """Next, we need to check whether the provided Git URL already exists in db.
+
+        Returns:
+            bool: True if Git URL does exist and False otherwise
+        """
+
+        url = await collection.find_one({"git_url": self.git_url})
+        if url is not None:
+            return True
+        return False
+    
+
     async def clone(self):
+        """After Git URL validation, the repository needs to be cloned.
+
+           Calls `clone_github_rep` function from `core.git`.
+        
+        Returns: 
+            Repo: The cloned repository object.
+
+        Raises:
+            Exception: If the destination directory already exists.
+            GitCommandError: If there is an error while cloning the repository.
+            Exception: If there is an unexpected error during the cloning process.
+        """
+
         await clone_github_repo(self.git_url, self.fs_path)
     
+
     async def validate_local_file_paths(self) -> bool:
         """After cloning, need to validate that the paths provided exist.
 
-        when creating, we ask for snakefile, config and conda env file paths
+        When creating, we ask for snakefile, config and conda env file paths
 
         Returns:
             bool: True if all paths exist
@@ -88,51 +133,64 @@ class CreatePipeline(SnakemakePipeline):
         return True
     
 
-    async def get_env_name(self):
-        env_file_path = os.path.join(self.fs_path, self.conda_env_file_path)
-        with open(env_file_path, 'r') as file:
-            env_data = yaml.safe_load(file)
+    # async def get_env_name(self):
+
+    #     env_file_path = os.path.join(self.fs_path, self.conda_env_file_path)
+    #     with open(env_file_path, 'r') as file:
+    #         env_data = yaml.safe_load(file)
             
-        env_name = env_data.get('name')
+    #     env_name = env_data.get('name')
             
-        if not env_name:
-            raise HTTPException(status_code=400, detail="Environment name not found in yaml file")
+    #     if not env_name:
+    #         raise HTTPException(status_code=400, detail="Environment name not found in yaml file")
             
-        return env_name
+    #     return env_name
     
     
-    async def env_exists(self, env_name):
-        command = "conda env list"
-        exit_status, output, error = await execute_command(command, self.fs_path)
+    # async def env_exists(self, env_name):
+    #     command = "conda env list"
+    #     exit_status, output, error = await execute_command(command, self.fs_path)
 
-        if exit_status != 0:
-            await self.delete_local()
-            raise HTTPException(status_code=400, detail=f"Error getting conda environments: {error.decode()}")
+    #     if exit_status != 0:
+    #         await self.delete_local()
+    #         raise HTTPException(status_code=400, detail=f"Error getting conda environments: {error.decode()}")
 
-        env_exists = env_name in output
-        return env_exists
+    #     env_exists = env_name in output
+    #     return env_exists
     
-    async def pull(self) -> None:
-        repo = await pull_latest_pipeline(self.fs_path)
-        _commit_history = repo.iter_commits()  # unused for now
+    # async def pull(self) -> None:
+    #     repo = await pull_latest_pipeline(self.fs_path)
+    #     _commit_history = repo.iter_commits()  # unused for now
 
-        try:
-            await self.validate_local_file_paths()
-        except AssertionError as error:
-            raise Exception(f"Error validating local paths: {error}")
+    #     try:
+    #         await self.validate_local_file_paths()
+    #     except AssertionError as error:
+    #         raise Exception(f"Error validating local paths: {error}")
 
     async def delete_local(self) -> None:
+        """At any point in configuration process if there is an error, 
+           we want to delete the local cloned repository.
+           
+           This ensures there are no unused repositories.
+        """
+
         rmtree(self.fs_path)
 
     async def dry_run(self) -> str:
         """Dry run the pipeline.
 
         Should be able to run `snakemake -n --use-conda`
-        make use of the `execute_command` function from `orcestrator.core.exec`
+        make use of the `execute_command` function from `core.exec`
 
         Notes:
         - the prod environment has snakemake & conda installed already
         - we expect the curator to have the conda env file as well
+
+        Returns: 
+            Str: The output of the dry run
+
+        Raises:
+            HTTPException: If there is an error performing the dry run.
         """
 
         command = f"snakemake -s {self.snakefile_path} -n --use-conda"
@@ -149,10 +207,24 @@ class CreatePipeline(SnakemakePipeline):
         except Exception as error:
             await self.delete_local()
             raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")   
+    
+
+    async def add_pipeline(self, collection: AsyncIOMotorCollection,) -> None:
+        """After all the above steps, the pipeline entry is added to the db.
+
+        Raises:
+            HTTPException: If there is an error adding entry to db.
+        """
+
+        try:
+            await collection.insert_one(self.model_dump())
+        except ValueError as error:
+            await self.delete_local()
+            raise HTTPException(status_code=401, detail=str(error))
         
-class UpdatePipeline(SnakemakePipeline):
-    # remove the pipeline_name from the update
-    pass
+# class UpdatePipeline(SnakemakePipeline):
+#     # remove the pipeline_name from the update
+#     pass
 
 class PipelineOut(SnakemakePipeline):
     pipeline_name: str
