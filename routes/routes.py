@@ -6,14 +6,15 @@ from fastapi import (
     Path,
 )
 from pydantic import ValidationError
-from models.Pipeline import CreatePipeline, PipelineOut
+from models.Pipeline import CreatePipeline
 from routes.create.create import create_pipeline
+from typing import Dict
 
 router = APIRouter()
 
-@router.post('/create-pipeline', response_model=PipelineOut)
+@router.post('/create-pipeline', response_model=Dict)
 async def create_pipeline_endpoint(data: CreatePipeline):
     try:
-        return await create_pipeline(data.dict())
+        return await create_pipeline(data.model_dump())
     except ValidationError as e:
         raise HTTPException(status_code=400, detail="Validation error: " + str(e.errors()))
