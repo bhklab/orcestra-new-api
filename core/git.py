@@ -36,8 +36,8 @@ async def validate_github_repo(url: str) -> bool:
                     raise HTTPException(status_code=404, detail="Repository not found")
     except InvalidURL:
         raise HTTPException(status_code=400, detail="Invalid GitHub URL")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=str(error))
         
 async def clone_github_repo(url: str, dest: Path) -> Repo:
     """Clone a GitHub repository.
@@ -58,11 +58,11 @@ async def clone_github_repo(url: str, dest: Path) -> Repo:
     if not dest.exists():
         dest.mkdir(parents=True)
     else:
-        raise HTTPException(status_code=400, detail=f"Directory: {dest} already exists. Remove from VM or change pipeline name")
+        raise HTTPException(status_code=400, detail=f"Directory: {dest} already exists. Change your pipeline name or remove from VM")
     
     try:
         return Repo.clone_from(url, dest)
     except GitCommandError as git_error:
-        raise git_error
-    except Exception as e:
-        raise e
+        raise HTTPException(status_code=400, detail=f"The repository was not clonable due to a git command error: {git_error}")
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"The repository was not clonable: {error}")

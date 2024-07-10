@@ -3,7 +3,7 @@ name = "orcestra-new-api"
 version = "0.1.0"
 description = "Add a short description here"
 authors = ["mattbocc <matthew.boccalon@live.ca>"]
-channels = ["conda-forge"]
+channels = ["conda-forge", "bioconda"]
 platforms = ["osx-arm64", "win-64"]
 
 [dependencies]
@@ -16,6 +16,7 @@ aiohttp = ">=3.9.5,<3.10"
 gitpython = ">=3.1.43,<3.2"
 pyyaml = ">=6.0.1,<6.1"
 conda = ">=24.5.0,<24.6"
+snakemake = "==7.32.4"
 
 [tasks]
 start = "uvicorn main:app --reload"
