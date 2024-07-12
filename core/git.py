@@ -66,3 +66,41 @@ async def clone_github_repo(url: str, dest: Path) -> Repo:
         raise HTTPException(status_code=400, detail=f"The repository was not clonable due to a git command error: {git_error}")
     except Exception as error:
         raise HTTPException(status_code=400, detail=f"The repository was not clonable: {error}")
+    
+
+async def pull_github_repo(repo: Repo) -> Repo:
+    """Pull changes from a GitHub repository.
+
+    Args:
+      repo (Repo): The repository object to pull changes from.
+
+    Returns:
+      Repo: The repository object with the pulled changes.
+
+    Raises:
+      GitCommandError: If there is an error while pulling the changes.
+    """
+    try:
+        repo.remotes.origin.pull()
+        return repo
+    except GitCommandError as git_error:
+        raise git_error
+
+async def pull_latest_pipeline(dest: Path) -> Repo:
+    """Pull the latest changes from a GitHub repository.
+
+    Args:
+      dest (Path): The destination path where the repository is cloned.
+
+    Returns:
+      Repo: The repository object with the pulled changes.
+
+    Raises:
+      GitCommandError: If there is an error while pulling the changes.
+    """
+    try:
+        repo = Repo(dest)
+        return await pull_github_repo(repo)
+    except GitCommandError as git_error:
+        raise git_error
+
