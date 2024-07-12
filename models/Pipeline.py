@@ -25,6 +25,7 @@ snakemake_pipelines_collection = database["snakemake_pipeline"]
 
 class SnakemakePipeline(BaseModel):
     git_url: str
+    pipeline_name: str
     output_files: List[str]
     snakefile_path: str = Field(
         default="Snakefile",
@@ -35,11 +36,10 @@ class SnakemakePipeline(BaseModel):
     conda_env_file_path: str = Field(
         default="pipeline_env.yaml",
     )
-
-class CreatePipeline(SnakemakePipeline):
-    pipeline_name: str
     created_at: Optional[str] = datetime.now(timezone.utc).isoformat()
     last_updated_at: Optional[str] = datetime.now(timezone.utc).isoformat()
+
+class CreatePipeline(SnakemakePipeline):
 
     model_config: ConfigDict = {
         "json_schema_extra": {
@@ -169,7 +169,23 @@ class CreatePipeline(SnakemakePipeline):
         except ValueError as error:
             await self.delete_local()
             raise HTTPException(status_code=401, detail=str(error))
-        
+
+class RunPipeline(SnakemakePipeline):
+
+    force_run: bool
+    preserved_directories: Optional[List[str]]
+
+    
+    async def pull_changes(self, collection: AsyncIOMotorCollection,) -> None:
+        pass
+
+    async def execute_pipeline (self) -> None:
+        pass
+
+    async def zenodo_upload (self) -> None:
+        pass
+
+
 class UpdatePipeline(SnakemakePipeline):
     # remove the pipeline_name from the update
     pass
@@ -182,4 +198,6 @@ class PipelineOut(SnakemakePipeline):
     conda_env_name: Optional[str] = None
     created_at: Optional[str] = None
     last_updated_at: Optional[str] = None
+    
+
 

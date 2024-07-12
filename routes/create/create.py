@@ -11,7 +11,7 @@ database = get_database()
 snakemake_pipelines_collection = database["snakemake_pipeline"]
 
 # Recieve a pipeline name, github url, list of output files, path to the snakefile, path to pipeline configurations, path to conda environment
-async def create_pipeline(data: CreatePipeline) -> None:
+async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
     try:
         pipeline = CreatePipeline(**data)
         if await pipeline.git_url_exists(snakemake_pipelines_collection):
