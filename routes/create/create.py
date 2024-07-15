@@ -16,7 +16,7 @@ async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
         raise HTTPException(status_code=400, detail=f"Missing required field: {error}")
     
     # validate git_url
-    await pipeline.validate_url()
+    await pipeline.validate_url
     
     # clone pipeline
     await pipeline.clone()
