@@ -215,8 +215,8 @@ class RunPipeline(SnakemakePipeline):
             output = await execute_command(command, cwd)
 
             # format output
-            output = str(output).replace("\\n", "")
-            output = output.replace("\\", "")
+            output = str(output).replace("\\n", " ")
+            output = output.replace("\\", " ")
 
             return output
         
