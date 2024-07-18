@@ -19,6 +19,8 @@ from models.common import PyObjectId
 from fastapi import HTTPException
 from motor.motor_asyncio import AsyncIOMotorCollection
 from db import get_database
+import os
+import shutil
 
 database = get_database()
 snakemake_pipelines_collection = database["snakemake_pipeline"]
@@ -70,6 +72,47 @@ class SnakemakePipeline(BaseModel):
             await self.delete_local()
             raise HTTPException(status_code=400, detail=f"Conda configuration file: '{self.conda_env_file_path}' does not exist.")
         return True
+    
+    async def create_env(self) -> None:
+        """Create conda environment.
+
+        Runs `conda env create -f {env_file_path} -n {env_name}` and
+        makes use of the `execute_command` function from `core.exec`
+
+        Raises:
+            HTTPException: If there is an error creating the conda environment.
+        """
+
+        try:
+            env_file_path = self.conda_env_file_path
+            env_name = self.pipeline_name
+            cwd = f"{self.fs_path}"
+            create_cmd = f"conda env create -f {env_file_path} -n {env_name}"
+            exit_status, stdout, stderr = await execute_command(create_cmd, cwd)
+
+            if exit_status != 0:
+                raise HTTPException(status_code=400, detail=f"Error creating conda environment: {stderr}")
+        except Exception as error:
+            await self.delete_env()
+            raise HTTPException(status_code=400, detail=str(error))
+        
+    
+    async def delete_env(self) -> None:
+        """Delete conda environment.
+
+        Raises:
+            HTTPException: If conda environment does not exist.
+        """
+
+        try:
+            env_path = f"{Path.home()}/orcestra-new-api/.pixi/envs/default/envs/{self.pipeline_name}"
+            if os.path.exists(env_path):
+                shutil.rmtree(env_path)
+            else:
+                raise HTTPException(status_code=400, detail=f"Environment {self.pipeline_name} does not exist at {env_path}")
+        except Exception as error:
+            raise HTTPException(status_code=400, detail=str(error))
+
 
 class CreatePipeline(SnakemakePipeline):
 
@@ -126,6 +169,7 @@ class CreatePipeline(SnakemakePipeline):
 
         rmtree(self.fs_path)
 
+
     async def dry_run(self) -> str:
         """Dry run the pipeline.
 
@@ -142,8 +186,8 @@ class CreatePipeline(SnakemakePipeline):
         Raises:
             HTTPException: If there is an error performing the dry run.
         """
-
-        command = f"snakemake -s {self.snakefile_path} -n --use-conda"
+        env_name = self.pipeline_name
+        command = f"source activate {env_name} && snakemake -s {self.snakefile_path} -n --use-conda"
         cwd = f"{self.fs_path}"
 
         try:
@@ -157,7 +201,7 @@ class CreatePipeline(SnakemakePipeline):
         except Exception as error:
             await self.delete_local()
             raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")   
-    
+        
 
     async def add_pipeline(self, collection: AsyncIOMotorCollection,) -> None:
         """Add pipeline entry into the database.
@@ -176,6 +220,7 @@ class RunPipeline(SnakemakePipeline):
 
     force_run: bool
     preserved_directories: Optional[List[str]]
+    release_notes: str
     
     async def pull(self) -> None:
         """Pulls changes from GitHub Repository.
@@ -208,15 +253,16 @@ class RunPipeline(SnakemakePipeline):
         else:
             force_run = ""
 
-        command = f"snakemake -s {self.snakefile_path} --use-conda {force_run} --cores 4"
+        env_name = self.pipeline_name
+        command = f"source activate {env_name} && snakemake -s {self.snakefile_path} --use-conda {force_run} --cores 4"
         cwd = f"{self.fs_path}"
 
         try:
             output = await execute_command(command, cwd)
 
             # format output
-            output = str(output).replace("\\n", "")
-            output = output.replace("\\", "")
+            output = str(output).replace("\\n", " ")
+            output = output.replace("\\", " ")
 
             return output
         

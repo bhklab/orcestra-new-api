@@ -10,11 +10,11 @@ async def execute_command(command: Union[str, List[str]], cwd: str) -> Tuple[int
     It captures both the standard output and the standard error of the command
     and returns them.
     """
-    if isinstance(command, str):
-        command = command.split()
+    if isinstance(command, list):
+        command = ' '.join(command)
 
-    process = await asyncio.create_subprocess_exec(
-        *command,
+    process = await asyncio.create_subprocess_shell(
+        command,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd
