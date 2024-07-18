@@ -1,8 +1,6 @@
 from models.Pipeline import CreatePipeline
 from fastapi import Depends, HTTPException
 from db import get_database
-import subprocess
-from conda.cli import main
 
 database = get_database()
 snakemake_pipelines_collection = database["snakemake_pipeline"]
