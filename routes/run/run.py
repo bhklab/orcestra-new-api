@@ -27,6 +27,11 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	# run pipeline
 	run_status = await pipeline.execute_pipeline()
 
+	# if pipeline run contains unsuccessful output throw exception
+	if "done Complete" not in run_status:
+		await pipeline.delete_local()
+		raise HTTPException(status_code=400, detail=(f"Error running pipeline: {run_status}"))
+
 	# delete conda environment
 	await pipeline.delete_env()
 

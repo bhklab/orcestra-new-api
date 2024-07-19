@@ -47,6 +47,14 @@ class SnakemakePipeline(BaseModel):
         """
         return Path.home() / "pipelines" / self.pipeline_name
     
+    async def delete_local(self) -> None:
+        """Delete cloned repository if an error is encountered.
+           
+           This ensures there are no unused repositories.
+        """
+
+        rmtree(self.fs_path)
+    
     async def validate_local_file_paths(self) -> bool:
         """Validate provided file paths exist in cloned repository.
 
@@ -159,15 +167,6 @@ class CreatePipeline(SnakemakePipeline):
         """
 
         await clone_github_repo(self.git_url, self.fs_path)
-    
-
-    async def delete_local(self) -> None:
-        """Delete cloned repository if an error is encountered.
-           
-           This ensures there are no unused repositories.
-        """
-
-        rmtree(self.fs_path)
 
 
     async def dry_run(self) -> str:
