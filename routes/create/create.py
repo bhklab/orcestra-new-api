@@ -23,14 +23,20 @@ async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
     
     # validate file paths exist
     await pipeline.validate_local_file_paths()
-    
+
+    # create conda environment
+    await pipeline.create_env()
+        
     # perform a dry run of the pipeline and recieve output
     dry_run_status = await pipeline.dry_run()
-
+        
     # if dry-run contains unsucessful output throw exception
     if "The order of jobs does not reflect the order of execution" not in dry_run_status:
         await pipeline.delete_local()
         raise HTTPException(status_code=400, detail=(f"Error performing dry run: {dry_run_status}"))
+    
+    # delete conda environment after dry run
+    await pipeline.delete_env()
 
     # add to database
     await pipeline.add_pipeline(snakemake_pipelines_collection)
