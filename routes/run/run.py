@@ -29,7 +29,6 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 
 	# if pipeline run contains unsuccessful output throw exception
 	if "Complete" not in run_status:
-		await pipeline.delete_local()
 		await pipeline.delete_env()
 		raise HTTPException(status_code=400, detail=(f"Error running pipeline: {run_status}"))
 
