@@ -32,6 +32,7 @@ async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
         
     # if dry-run contains unsucessful output throw exception
     if "The order of jobs does not reflect the order of execution" not in dry_run_status:
+
         await pipeline.delete_local()
         raise HTTPException(status_code=400, detail=(f"Error performing dry run: {dry_run_status}"))
     

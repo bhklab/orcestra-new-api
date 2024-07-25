@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from models.Pipeline import CreatePipeline, RunPipeline
 from routes.create.create import create_pipeline
 from routes.run.run import run_pipeline
+from routes.delete.delete import delete_pipeline
 from typing import Dict
 
 router = APIRouter()
@@ -26,3 +27,12 @@ async def run_pipeline_endpoint(data: Dict):
         return await run_pipeline(data)
     except ValidationError as e:
         raise HTTPException(status_code=400, detail="Validation error: " + str(e.errors()))
+
+@router.delete('/delete-pipeline', response_model=Dict)
+async def delete_pipeline_endpoint(pipeline_name: str):
+    try:
+        return await delete_pipeline(pipeline_name)
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail="Validation error: " + str(e.errors()))
+
+    

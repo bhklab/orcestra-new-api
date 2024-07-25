@@ -129,6 +129,7 @@ class CreatePipeline(SnakemakePipeline):
             "example": {
                 "pipeline_name": "snakemake_bioconductor",
                 "git_url": "https://github.com/jjjermiah/5_snakemake_bioconductor.git",
+                "output_file": "",
                 "output_files": ["results/output.txt"],
                 "snakefile_path": "workflow/Snakefile",
                 "config_file_path": "workflow/config/config.yaml",
@@ -218,7 +219,7 @@ class CreatePipeline(SnakemakePipeline):
 class RunPipeline(SnakemakePipeline):
 
     force_run: bool
-    preserved_directories: Optional[List[str]]
+    # preserved_directories: Optional[List[str]]
     release_notes: str
     
     async def pull(self) -> None:
