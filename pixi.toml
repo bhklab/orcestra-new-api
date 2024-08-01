@@ -19,4 +19,4 @@ conda = ">=24.5.0,<24.6"
 snakemake = "==7.32.4"
 
 [tasks]
-start = "uvicorn main:app --reload"
+start = "uvicorn api.main:app --reload --reload-dir api"

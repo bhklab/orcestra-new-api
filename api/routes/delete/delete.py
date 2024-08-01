@@ -1,6 +1,6 @@
-from models.Pipeline import CreatePipeline
+from api.models.Pipeline import CreatePipeline
 from fastapi import Depends, HTTPException
-from db import get_database
+from api.db import get_database
 
 database = get_database()
 snakemake_pipelines_collection = database["snakemake_pipeline"]

@@ -6,10 +6,10 @@ from fastapi import (
     Path,
 )
 from pydantic import ValidationError
-from models.Pipeline import CreatePipeline, RunPipeline
-from routes.create.create import create_pipeline
-from routes.run.run import run_pipeline
-from routes.delete.delete import delete_pipeline
+from api.models.Pipeline import CreatePipeline, RunPipeline
+from api.routes.create.create import create_pipeline
+from api.routes.run.run import run_pipeline
+from api.routes.delete.delete import delete_pipeline
 from typing import Dict
 
 router = APIRouter()
