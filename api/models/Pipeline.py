@@ -6,7 +6,7 @@ from typing import (
     Optional,
 )
 
-from core.exec import execute_command
+from api.core.exec import execute_command
 from git import Repo
 from pydantic import (
     BaseModel,
@@ -14,11 +14,11 @@ from pydantic import (
     Field,
 )
 
-from core.git import validate_github_repo, clone_github_repo, pull_github_repo, pull_latest_pipeline
-from models.common import PyObjectId
+from api.core.git import validate_github_repo, clone_github_repo, pull_github_repo, pull_latest_pipeline
+from api.models.common import PyObjectId
 from fastapi import HTTPException
 from motor.motor_asyncio import AsyncIOMotorCollection
-from db import get_database
+from api.db import get_database
 import os
 import shutil
 
@@ -113,7 +113,8 @@ class SnakemakePipeline(BaseModel):
         """
 
         try:
-            env_path = f"{Path.home()}/orcestra-new-api/.pixi/envs/default/envs/{self.pipeline_name}"
+            print(Path.cwd())
+            env_path = f"{Path.cwd()}/.pixi/envs/default/envs/{self.pipeline_name}"
             if os.path.exists(env_path):
                 shutil.rmtree(env_path)
             else:

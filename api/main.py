@@ -1,9 +1,9 @@
 from fastapi import FastAPI, Depends, Query
-from routes import routes
-from db import get_database
+from api.routes import routes
+from api.db import get_database
 from pymongo.database import Database
-from convert import convert
-from models.Pipeline import PipelineOut
+from api.convert import convert
+from api.models.Pipeline import PipelineOut
 
 app = FastAPI()
 
