@@ -1,6 +1,6 @@
-from models.Pipeline import RunPipeline
+from api.models.Pipeline import RunPipeline
 from fastapi import Depends, HTTPException
-from db import get_database
+from api.db import get_database
 
 database = get_database()
 snakemake_pipelines_collection = database["snakemake_pipeline"]
@@ -29,7 +29,9 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 
 	# if pipeline run contains unsuccessful output throw exception
 	if "Complete" not in run_status:
+		
 		await pipeline.delete_env()
+		await pipeline.delete_local()
 		raise HTTPException(status_code=400, detail=(f"Error running pipeline: {run_status}"))
 
 	# delete conda environment

@@ -1,7 +1,9 @@
 # pixi environments
 .pixi
 *.egg-info
-.env
 
+
+.env
 __pycache__
 **/__pycache__/
+pipelines/

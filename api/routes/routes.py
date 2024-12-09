@@ -6,10 +6,11 @@ from fastapi import (
     Path,
 )
 from pydantic import ValidationError
-from models.Pipeline import CreatePipeline, RunPipeline
-from routes.create.create import create_pipeline
-from routes.run.run import run_pipeline
-from routes.delete.delete import delete_pipeline
+from api.models.Pipeline import CreatePipeline, RunPipeline, Zenodo
+from api.routes.create.create import create_pipeline
+from api.routes.run.run import run_pipeline
+from api.routes.delete.delete import delete_pipeline
+from api.routes.zenodo.zenodo import zenodo_upload
 from typing import Dict
 
 router = APIRouter()
@@ -35,4 +36,11 @@ async def delete_pipeline_endpoint(pipeline_name: str):
     except ValidationError as e:
         raise HTTPException(status_code=400, detail="Validation error: " + str(e.errors()))
 
+
+@router.post('/zenodo', response_model=Dict)
+async def zenodo_upload_endpoint(data: Zenodo):
+    try:
+        return await zenodo_upload(data)
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail="Validation error: " + str(e.errors()))
     

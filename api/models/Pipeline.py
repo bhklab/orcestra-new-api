@@ -6,19 +6,19 @@ from typing import (
     Optional,
 )
 
-from core.exec import execute_command
+from api.core.exec import execute_command
 from git import Repo
 from pydantic import (
-    BaseModel,
+    BaseModel, 
     ConfigDict,
     Field,
 )
 
-from core.git import validate_github_repo, clone_github_repo, pull_github_repo, pull_latest_pipeline
-from models.common import PyObjectId
+from api.core.git import validate_github_repo, clone_github_repo, pull_github_repo, pull_latest_pipeline
+from api.models.common import PyObjectId
 from fastapi import HTTPException
 from motor.motor_asyncio import AsyncIOMotorCollection
-from db import get_database
+from api.db import get_database
 import os
 import shutil
 
@@ -45,7 +45,7 @@ class SnakemakePipeline(BaseModel):
     def fs_path(self) -> Path:
         """Returns the path for the pipeline's directory.
         """
-        return Path.home() / "pipelines" / self.pipeline_name
+        return Path.home() / "pipelines" / self.pipeline_name	
     
     async def delete_local(self) -> None:
         """Delete cloned repository if an error is encountered.
@@ -99,9 +99,12 @@ class SnakemakePipeline(BaseModel):
             exit_status, stdout, stderr = await execute_command(create_cmd, cwd)
 
             if exit_status != 0:
+                await self.delete_env()
+                await self.delete_local()
                 raise HTTPException(status_code=400, detail=f"Error creating conda environment: {stderr}")
         except Exception as error:
             await self.delete_env()
+            await self.delete_local()
             raise HTTPException(status_code=400, detail=str(error))
         
     
@@ -113,12 +116,15 @@ class SnakemakePipeline(BaseModel):
         """
 
         try:
-            env_path = f"{Path.home()}/orcestra-new-api/.pixi/envs/default/envs/{self.pipeline_name}"
+            print(Path.cwd())
+            env_path = f"{Path.cwd()}/.pixi/envs/default/envs/{self.pipeline_name}"
             if os.path.exists(env_path):
                 shutil.rmtree(env_path)
             else:
+                await self.delete_local()
                 raise HTTPException(status_code=400, detail=f"Environment {self.pipeline_name} does not exist at {env_path}")
         except Exception as error:
+            await self.delete_local()
             raise HTTPException(status_code=400, detail=str(error))
 
 
@@ -149,10 +155,11 @@ class CreatePipeline(SnakemakePipeline):
     
 
     async def git_url_exists(self, collection: AsyncIOMotorCollection) -> bool:
-        """Verify pipeline's Git URL is not already in database.
+        """
+            Verify pipeline's Git URL is not already in database.
 
-        Returns:
-            bool: True if Git URL does exist and False otherwise
+            Returns:
+                bool: True if Git URL does exist and False otherwise
         """
 
         url = await collection.find_one({"git_url": self.git_url})
@@ -200,6 +207,7 @@ class CreatePipeline(SnakemakePipeline):
             return output
         except Exception as error:
             await self.delete_local()
+            await self.delete_env()
             raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")   
         
 
@@ -233,6 +241,7 @@ class RunPipeline(SnakemakePipeline):
         try:
             await self.validate_local_file_paths()
         except AssertionError as ae:
+            await self.delete_local()
             raise Exception(f"Error validating local paths: {ae}")
 
 
@@ -267,11 +276,68 @@ class RunPipeline(SnakemakePipeline):
             return output
         
         except Exception as error:
+            await self.delete_env()
+            await self.delete_local()
             raise HTTPException(status_code=400, detail=f"Error running pipeline: {error}")
         
-    async def zenodo_upload (self) -> None:
-        pass
+class Zenodo(BaseModel):
 
+    pipeline_name: str
+
+    """
+        Create new Zenodo entry for dataset and upload output files
+
+        Returns:
+            bool: True
+    """
+    async def zenodo_upload (self) -> bool:
+        pipeline_data = await snakemake_pipelines_collection.find_one({"pipeline_name": self.pipeline_name})
+
+        headers = {"Content-Type": "application/json"}
+        params = {'access_token': os.getenv("SANDBOX_TOKEN")}
+
+        # Create Zenodo entry for new dataset
+        try:
+            r = requests.post('https://sandbox.zenodo.org/api/deposit/depositions',
+                params=params,
+                json={    
+                    "metadata": {
+                        "title": self.pipeline_name,
+                        "upload_type": "dataset",
+                        "description": "Dataset description from config file",
+                }},
+                headers=headers
+            )
+        except Exception as error:
+            raise HTTPException(status_code=400, detail=f"Error uploading dataset to zenodo: {error}")
+
+        if r.status_code == '401' or r.status_code == '400':
+            raise HTTPException(status_code=r.status_code, detail=f"Error uploading dataset to zenodo with error code: {r.status_code}")
+
+        # retrieve path to put files on zenodo
+        bucket_url = r.json()["links"]["bucket"]
+
+        # get files to be uploaded to Zenodo
+        path = Path.home() / "pipelines" / self.pipeline_name / "results"
+        files = os.listdir(path)
+
+        # upload output files to new Zenodo entry
+        try:
+            for filename in files:
+                with open(f"{path}/{filename}", "rb") as fp:
+                    r = requests.put(
+                        "%s/%s" % (bucket_url, filename),
+                        data=fp,
+                        params=params,
+                    )
+        except Exception as error:
+            raise HTTPException(status_code=r.status_code, detail=f"Error uploading files to new Zenodo entry: {r.status_code}")
+
+        if r.status_code == '401' or r.status_code == '400':
+            raise HTTPException(status_code=r.status_code, detail=f"Error uploading dataset to zenodo with error code: {r.status_code}")
+
+        return False
+    
 
 class UpdatePipeline(SnakemakePipeline):
     # remove the pipeline_name from the update
