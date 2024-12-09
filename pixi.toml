@@ -17,6 +17,7 @@ gitpython = ">=3.1.43,<3.2"
 pyyaml = ">=6.0.1,<6.1"
 conda = ">=24.5.0,<24.6"
 snakemake = "==7.32.4"
+email-validator = ">=2.2.0,<2.3"
 
 [tasks]
 start = "uvicorn api.main:app --reload --reload-dir api"

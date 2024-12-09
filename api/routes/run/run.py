@@ -30,12 +30,12 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	# if pipeline run contains unsuccessful output throw exception
 	if "Complete" not in run_status:
 		
-		await pipeline.delete_env()
+		await pipeline.delete_conda_env()
 		await pipeline.delete_local()
 		raise HTTPException(status_code=400, detail=(f"Error running pipeline: {run_status}"))
 
 	# delete conda environment
-	await pipeline.delete_env()
+	await pipeline.delete_conda_env()
 
 	return {
 		"success": "yes",
