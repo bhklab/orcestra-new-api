@@ -9,7 +9,7 @@ from typing import (
 from api.core.exec import execute_command
 from git import Repo
 from pydantic import (
-    BaseModel,
+    BaseModel, 
     ConfigDict,
     Field,
 )
@@ -99,9 +99,12 @@ class SnakemakePipeline(BaseModel):
             exit_status, stdout, stderr = await execute_command(create_cmd, cwd)
 
             if exit_status != 0:
+                await self.delete_env()
+                await self.delete_local()
                 raise HTTPException(status_code=400, detail=f"Error creating conda environment: {stderr}")
         except Exception as error:
             await self.delete_env()
+            await self.delete_local()
             raise HTTPException(status_code=400, detail=str(error))
         
     
@@ -118,8 +121,10 @@ class SnakemakePipeline(BaseModel):
             if os.path.exists(env_path):
                 shutil.rmtree(env_path)
             else:
+                await self.delete_local()
                 raise HTTPException(status_code=400, detail=f"Environment {self.pipeline_name} does not exist at {env_path}")
         except Exception as error:
+            await self.delete_local()
             raise HTTPException(status_code=400, detail=str(error))
 
 
@@ -202,6 +207,7 @@ class CreatePipeline(SnakemakePipeline):
             return output
         except Exception as error:
             await self.delete_local()
+            await self.delete_env()
             raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")   
         
 
@@ -235,6 +241,7 @@ class RunPipeline(SnakemakePipeline):
         try:
             await self.validate_local_file_paths()
         except AssertionError as ae:
+            await self.delete_local()
             raise Exception(f"Error validating local paths: {ae}")
 
 
@@ -269,6 +276,8 @@ class RunPipeline(SnakemakePipeline):
             return output
         
         except Exception as error:
+            await self.delete_env()
+            await self.delete_local()
             raise HTTPException(status_code=400, detail=f"Error running pipeline: {error}")
         
 class Zenodo(BaseModel):
