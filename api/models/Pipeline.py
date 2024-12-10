@@ -122,12 +122,12 @@ class SnakemakePipeline(BaseModel):
             raise HTTPException(status_code=400, detail=str(error))
         
     async def create_pixi_env(self) -> None:
-        """Create conda environment.
+        """Create Pixi environment.
 
-        Runs `pixi install` and to make sure the packages can be installed correctly
+        Runs `pixi install` to install all the needed packages to run the pipeline
 
         Raises:
-            HTTPException: If there is an error creating the conda environment.
+            HTTPException: If there is an error creating the Pixi environment.
         """
 
         try:
