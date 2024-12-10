@@ -221,7 +221,7 @@ class CreatePipeline(SnakemakePipeline):
 
         Notes:
         - the prod environment has snakemake & conda installed already
-        - we expect the curator to have the conda env file as well
+        - we expect the curator to have the conda env file if needed
         - If a pixi env is being used utilize pixi environment workflow
         - If conda env is being used utilize conda environment workflow
 
@@ -301,8 +301,13 @@ class RunPipeline(SnakemakePipeline):
     async def execute_pipeline (self) -> None:
         """Run the pipeline.
 
-        Runs `snakemake -s --use-conda` and
-        makes use of the `execute_command` function from `core.exec`
+        Runs `snakemake -s` with the additional force run option by making
+        use of the `execute_command` function from `core.exec`
+
+        Notes:
+        - the prod environment has snakemake & conda installed already
+        - If a pixi env is being used utilize pixi environment workflow
+        - If conda env is being used utilize conda environment workflow
 
         Returns: 
             Str: The output of the execution
@@ -315,23 +320,40 @@ class RunPipeline(SnakemakePipeline):
         else:
             force_run = ""
 
-        env_name = self.pipeline_name
-        command = f"source activate {env_name} && snakemake -s {self.snakefile_path} --use-conda {force_run} --cores 4"
-        cwd = f"{self.fs_path}"
+        if self.pixi_use:
+            command = f"pixi run snakemake -s {self.snakefile_path} {force_run} --cores 4"
+            cwd = f"{self.fs_path}"
 
-        try:
-            output = await execute_command(command, cwd)
+            try:
+                output = await execute_command(command, cwd)
 
-            # format output
-            output = str(output).replace("\\n", " ")
-            output = output.replace("\\", " ")
+                # format output
+                output = str(output).replace("\\n", " ")
+                output = output.replace("\\", " ")
 
-            return output
-        
-        except Exception as error:
-            await self.delete_conda_env()
-            await self.delete_local()
-            raise HTTPException(status_code=400, detail=f"Error running pipeline: {error}")
+                return output
+            
+            except Exception as error:
+                await self.delete_local()
+                raise HTTPException(status_code=400, detail=f"Error running pipeline: {error}")
+        elif not self.pixi_use:
+            env_name = self.pipeline_name
+            command = f"source activate {env_name} && snakemake -s {self.snakefile_path} --use-conda {force_run} --cores 4"
+            cwd = f"{self.fs_path}"
+
+            try:
+                output = await execute_command(command, cwd)
+
+                # format output
+                output = str(output).replace("\\n", " ")
+                output = output.replace("\\", " ")
+
+                return output
+            
+            except Exception as error:
+                await self.delete_conda_env()
+                await self.delete_local()
+                raise HTTPException(status_code=400, detail=f"Error running pipeline: {error}")
         
 class Zenodo(BaseModel):
 
