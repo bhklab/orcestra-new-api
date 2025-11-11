@@ -18,10 +18,10 @@ os.makedirs(log_directory, exist_ok=True)
 logging.basicConfig(
         level=logging.DEBUG,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        filename='api/logs/application.log',
-        filemode='w' # Overwrite log file on each run for this example
-)
-logging.getLogger().addHandler(logging.StreamHandler())  # Also log to console
+        handlers=[
+            logging.FileHandler(log_filepath),
+            logging.StreamHandler()
+    ])
 app = FastAPI()
 
 # To test all is working fine (http://localhost:8000)
