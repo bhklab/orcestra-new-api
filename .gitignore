@@ -1,8 +1,8 @@
 # pixi environments
 .pixi
 *.egg-info
-
-
+#Ignore log files
+api/logs/
 .env
 __pycache__
 **/__pycache__/

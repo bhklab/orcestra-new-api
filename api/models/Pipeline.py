@@ -21,6 +21,9 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 from api.db import get_database
 import os
 import shutil
+import logging
+
+logger = logging.getLogger(__name__)
 
 database = get_database()
 snakemake_pipelines_collection = database["snakemake_pipeline"]
@@ -67,7 +70,7 @@ class SnakemakePipeline(BaseModel):
         Raises:
             AssertionError: If any of the paths do not exist.
         """
-        
+        logger.info("Validating local file paths for pipeline: %s", self.pipeline_name)
         if self.pixi_use:
             if not self.fs_path.exists():
                 await self.delete_local()
@@ -93,6 +96,7 @@ class SnakemakePipeline(BaseModel):
                 await self.delete_local()
                 raise HTTPException(status_code=400, detail=f"Conda configuration file: '{self.conda_env_file_path}' does not exist.")
         
+        logger.info("All provided file paths are valid for pipeline: %s", self.pipeline_name)
         return True
     
     async def create_conda_env(self) -> None:
@@ -104,7 +108,7 @@ class SnakemakePipeline(BaseModel):
         Raises:
             HTTPException: If there is an error creating the conda environment.
         """
-
+        logger.info("Creating conda environment for pipeline: %s", self.pipeline_name)  
         try:
             env_file_path = self.conda_env_file_path
             env_name = self.pipeline_name
@@ -129,6 +133,7 @@ class SnakemakePipeline(BaseModel):
         Raises:
             HTTPException: If there is an error creating the Pixi environment.
         """
+        logger.info("Creating Pixi environment for pipeline: %s", self.pipeline_name)
 
         try:
             cwd = f"{self.fs_path}"
@@ -197,10 +202,12 @@ class CreatePipeline(SnakemakePipeline):
             Returns:
                 bool: True if Git URL does exist and False otherwise
         """
-
+        logger.info("Checking if Git URL already exists in database: %s", self.git_url)
         url = await collection.find_one({"git_url": self.git_url})
         if url is not None:
+            logger.info("Git URL already exists in database: %s", self.git_url)
             return True
+        logger.info("Git URL does not exist in database; continuing...: %s", self.git_url)
         return False
     
 
@@ -231,6 +238,7 @@ class CreatePipeline(SnakemakePipeline):
         Raises:
             HTTPException: If there is an error performing the dry run.
         """
+        logger.info("Starting dry run for pipeline: %s", self.pipeline_name)
         if self.pixi_use:
             command = f"pixi run snakemake -s {self.snakefile_path} -n"
             cwd = f"{self.fs_path}"
@@ -270,7 +278,7 @@ class CreatePipeline(SnakemakePipeline):
         Raises:
             HTTPException: If there is an error adding entry to db.
         """
-
+        logger.info("Adding pipeline to database: %s", self.pipeline_name)
         try:
             await collection.insert_one(self.model_dump())
         except ValueError as error:

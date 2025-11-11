@@ -4,7 +4,24 @@ from api.db import get_database
 from pymongo.database import Database
 from api.convert import convert
 from api.models.Pipeline import PipelineOut
+import logging
+import os
 
+# Define the log directory and file name
+log_directory = "api/logs"
+log_filename = "application.log"
+log_filepath = os.path.join(log_directory, log_filename)
+
+# Create the log directory if it does not exist
+os.makedirs(log_directory, exist_ok=True)
+
+logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        filename='api/logs/application.log',
+        filemode='w' # Overwrite log file on each run for this example
+)
+logging.getLogger().addHandler(logging.StreamHandler())  # Also log to console
 app = FastAPI()
 
 # To test all is working fine (http://localhost:8000)
