@@ -4,7 +4,9 @@ import aiohttp
 from aiohttp import InvalidURL
 from git import GitCommandError, Repo
 from fastapi import HTTPException
+import logging
 
+logger = logging.getLogger(__name__)
 
 async def validate_github_repo(url: str) -> bool:
     """This function validates a GitHub repository.
@@ -16,6 +18,7 @@ async def validate_github_repo(url: str) -> bool:
       bool: True if the repository is valid (status code 200), False otherwise.
 
     """
+    logger.info("Validating provided GitHub repository URL")
     if not url.endswith(".git"):
         raise HTTPException(status_code=400, detail="Invalid GitHub URL")
     elif not url.startswith("https://github.com"):
@@ -31,6 +34,7 @@ async def validate_github_repo(url: str) -> bool:
         async with aiohttp.ClientSession() as session:
             async with session.get(api_url) as response:
                 if response.status == 200:
+                    logger.info("GitHub repository URL is valid")
                     return True
                 elif response.status == 404:
                     raise HTTPException(status_code=404, detail="Repository not found")
@@ -54,6 +58,7 @@ async def clone_github_repo(url: str, dest: Path) -> Repo:
       GitCommandError: If there is an error while cloning the repository.
       Exception: If there is an unexpected error during the cloning process.
     """
+    logger.info("Cloning GitHub repository from: %s", url)
     # check if folder already exists
     if not dest.exists():
         dest.mkdir(parents=True)

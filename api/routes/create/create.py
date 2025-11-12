@@ -2,6 +2,9 @@ from api.models.Pipeline import CreatePipeline
 from fastapi import Depends, HTTPException
 from api.db import get_database
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 database = get_database()
 snakemake_pipelines_collection = database["snakemake_pipeline"]
@@ -10,6 +13,7 @@ snakemake_pipelines_collection = database["snakemake_pipeline"]
 async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
     try:
         pipeline = CreatePipeline(**data)
+        logger.info("Pipeline creation process started for: %s", pipeline.pipeline_name)
         if await pipeline.git_url_exists(snakemake_pipelines_collection):
             raise HTTPException(status_code=400, detail="Git url already exists in database")
 
@@ -21,6 +25,7 @@ async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
     
     # clone pipeline
     await pipeline.clone()
+    logger.info("Cloned pipeline repository successfully")
     
     # validate file paths exist
     await pipeline.validate_local_file_paths()
@@ -28,8 +33,10 @@ async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
     # Create either pixi or conda environment
     if pipeline.pixi_use:
         await pipeline.create_pixi_env()
+        logger.info("Created Pixi environment successfully")
     elif not pipeline.pixi_use:
         await pipeline.create_conda_env()
+        logger.info("Created conda environment successfully")
 
     
     time.sleep(10)
@@ -48,9 +55,11 @@ async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
     if not pipeline.pixi_use:
         await pipeline.delete_conda_env()
 
+    logger.info("Pipeline dry run successful")
+
     # add to database
     await pipeline.add_pipeline(snakemake_pipelines_collection)
-
+    logger.info("Successfully added pipeline to database")
     return {"clone_status": "Pipeline cloned successfully",
             "configuration_checks": "Pipeline passed configuration checks",
             "dry_run_status": str(dry_run_status),
