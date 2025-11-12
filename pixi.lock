@@ -37,6 +37,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/coin-or-utils-2.11.11-hafd1a81_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/coincbc-2.10.11-0_metapackage.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_0.tar.bz2
+      - conda: https://conda.anaconda.org/conda-forge/noarch/colorlog-6.9.0-pyh707e725_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/conda-24.5.0-py39h2804cbe_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/conda-libmamba-solver-24.7.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/conda-package-handling-2.3.0-pyh7900ff3_0.conda
@@ -258,6 +259,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/charset-normalizer-3.3.2-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/click-8.1.7-win_pyh7428d3b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_0.tar.bz2
+      - conda: https://conda.anaconda.org/conda-forge/noarch/colorlog-6.10.1-pyh7428d3b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/conda-24.5.0-py311h1ea47a8_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/conda-libmamba-solver-24.7.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/conda-package-handling-2.3.0-pyh7900ff3_0.conda
@@ -945,6 +947,27 @@ packages:
   license_family: BSD
   size: 25170
   timestamp: 1666700778190
+- conda: https://conda.anaconda.org/conda-forge/noarch/colorlog-6.10.1-pyh7428d3b_0.conda
+  sha256: 8977984ab6653e8f3706020456123de07c20ed1dea46d5fe1be0aebbdeeec00a
+  md5: 424cd9f7abac5c481b58eaae4b779677
+  depends:
+  - __win
+  - colorama
+  - python >=3.10
+  license: MIT
+  license_family: MIT
+  size: 16932
+  timestamp: 1760645265802
+- conda: https://conda.anaconda.org/conda-forge/noarch/colorlog-6.9.0-pyh707e725_1.conda
+  sha256: 9a0dc9a0611d3ad33846a52b913346a5ca5cd9f0aa67a53fd89386652d07874b
+  md5: f00fc375bd02bdbbf791f9fe26ae96ec
+  depends:
+  - __unix
+  - python >=3.9
+  license: MIT
+  license_family: MIT
+  size: 15522
+  timestamp: 1733258500721
 - conda: https://conda.anaconda.org/conda-forge/osx-arm64/conda-24.5.0-py39h2804cbe_0.conda
   sha256: dc3d4d2a0db855e5b1ca2550da52bb18dbf92e54c8f66ef00ac60381613a6e7d
   md5: a709dd1b0f6a5428144ea150d59e9314
