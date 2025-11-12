@@ -16,7 +16,7 @@ log_filepath = os.path.join(log_directory, log_filename)
 os.makedirs(log_directory, exist_ok=True)
 
 logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(log_filepath),
