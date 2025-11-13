@@ -2,7 +2,9 @@ from api.models.Pipeline import RunPipeline
 from fastapi import Depends, HTTPException
 from api.db import get_database
 from datetime import datetime, timezone
+import logging
 
+logger = logging.getLogger(__name__)
 database = get_database()
 snakemake_pipelines_collection = database["snakemake_pipeline"]
 
@@ -16,6 +18,7 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	except Exception as error:
 		raise HTTPException(status_code=400, detail=str(error))
 	
+	logger.info("%s pipeline found in database", pipeline_name)
 	pipeline = {**data, **pipeline_data}
 	pipeline = RunPipeline(**pipeline)
 
@@ -39,6 +42,7 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 		await pipeline.delete_local()
 		raise HTTPException(status_code=400, detail=(f"Error running pipeline: {run_status}"))
 
+	logger.info("Pipeline run successful")
 	# delete conda environment after run
 	if not pipeline.pixi_use:
 		await pipeline.delete_conda_env()

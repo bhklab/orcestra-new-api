@@ -33,10 +33,8 @@ async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
     # Create either pixi or conda environment
     if pipeline.pixi_use:
         await pipeline.create_pixi_env()
-        logger.info("Created Pixi environment successfully")
     elif not pipeline.pixi_use:
         await pipeline.create_conda_env()
-        logger.info("Created conda environment successfully")
 
     
     time.sleep(10)

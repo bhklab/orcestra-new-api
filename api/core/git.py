@@ -87,6 +87,7 @@ async def pull_github_repo(repo: Repo) -> Repo:
     """
     try:
         repo.remotes.origin.pull()
+        logger.info("Successfully pulled latest changes from repository")
         return repo
     except GitCommandError as git_error:
         raise git_error
@@ -104,6 +105,7 @@ async def pull_latest_pipeline(dest: Path) -> Repo:
       GitCommandError: If there is an error while pulling the changes.
     """
     try:
+        logger.info("Pulling latest changes from repository")
         repo = Repo(dest)
         return await pull_github_repo(repo)
     except GitCommandError as git_error:

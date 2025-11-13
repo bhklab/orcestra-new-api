@@ -125,6 +125,8 @@ class SnakemakePipeline(BaseModel):
             await self.delete_local()
             raise HTTPException(status_code=400, detail=str(error))
         
+        logger.info("Created conda environment successfully")
+        
     async def create_pixi_env(self) -> None:
         """Create Pixi environment.
 
@@ -146,6 +148,8 @@ class SnakemakePipeline(BaseModel):
         except Exception as error:
             await self.delete_local()
             raise HTTPException(status_code=400, detail=str(error))
+        
+        logger.info("Created Pixi environment successfully")
         
     
     async def delete_conda_env(self) -> None:
@@ -323,6 +327,8 @@ class RunPipeline(SnakemakePipeline):
         Raises:
             HTTPException: If there is an error running the pipeline.
         """
+        logger.info("Running pipeline")
+        
         if self.force_run:
             force_run = "--forcerun"
         else:
