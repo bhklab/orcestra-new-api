@@ -34,7 +34,6 @@ async def validate_github_repo(url: str) -> bool:
         async with aiohttp.ClientSession() as session:
             async with session.get(api_url) as response:
                 if response.status == 200:
-                    logger.info("GitHub repository URL is valid")
                     return True
                 elif response.status == 404:
                     raise HTTPException(status_code=404, detail="Repository not found")

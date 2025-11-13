@@ -96,7 +96,6 @@ class SnakemakePipeline(BaseModel):
                 await self.delete_local()
                 raise HTTPException(status_code=400, detail=f"Conda configuration file: '{self.conda_env_file_path}' does not exist.")
         
-        logger.info("Repository paths are valid")
         return True
     
     async def create_conda_env(self) -> None:
@@ -125,8 +124,6 @@ class SnakemakePipeline(BaseModel):
             await self.delete_local()
             raise HTTPException(status_code=400, detail=str(error))
         
-        logger.info("Created conda environment successfully")
-        
     async def create_pixi_env(self) -> None:
         """Create Pixi environment.
 
@@ -149,9 +146,6 @@ class SnakemakePipeline(BaseModel):
             await self.delete_local()
             raise HTTPException(status_code=400, detail=str(error))
         
-        logger.info("Created Pixi environment successfully")
-        
-    
     async def delete_conda_env(self) -> None:
         """Delete conda environment.
 
@@ -211,7 +205,6 @@ class CreatePipeline(SnakemakePipeline):
         if url is not None:
             logger.info("Git URL already exists in database")
             return True
-        logger.info("Git URL does not exist in database; continuing")
         return False
     
 
