@@ -11,7 +11,6 @@ snakemake_pipelines_collection = database["snakemake_pipeline"]
 async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	try:
 		pipeline_name = data['pipeline_name']
-		logger.info("Checking if pipeline exists in database: %s", pipeline_name)
 		pipeline_data = await snakemake_pipelines_collection.find_one({"pipeline_name": pipeline_name})
 		if pipeline_data is None:
 			raise HTTPException(status_code=404, detail="Pipeline not found")
@@ -19,7 +18,7 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	except Exception as error:
 		raise HTTPException(status_code=400, detail=str(error))
 	
-	logger.info("Pipeline found in database")
+	logger.info("%s pipeline found in database", pipeline_name)
 	pipeline = {**data, **pipeline_data}
 	pipeline = RunPipeline(**pipeline)
 

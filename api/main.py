@@ -9,7 +9,6 @@ from api.logger_config import setup_logger
 # Initialize root logger for app
 setup_logger()
 
-
 app = FastAPI()
 
 # To test all is working fine (http://localhost:8000)

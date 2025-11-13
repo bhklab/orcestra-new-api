@@ -39,4 +39,3 @@ def setup_logger():
 
     # Root logger configuration
     logging.basicConfig(level=logging.INFO, handlers=[console_handler, file_handler])
-    logging.info("Logger initialized successfully.")
