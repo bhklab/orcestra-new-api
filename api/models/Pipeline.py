@@ -21,12 +21,13 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 from api.db import get_database
 import os
 import shutil
+import requests
 import logging
 
 logger = logging.getLogger(__name__)
 
 database = get_database()
-snakemake_pipelines_collection = database["snakemake_pipeline"]
+snakemake_pipelines_collection = database["create_snakemake_pipeline"]
 
 class SnakemakePipeline(BaseModel):
     git_url: str
@@ -146,6 +147,57 @@ class SnakemakePipeline(BaseModel):
             await self.delete_local()
             raise HTTPException(status_code=400, detail=str(error))
         
+    async def dry_run(self) -> str:
+        """Dry run the pipeline.
+
+        Should be able to run `snakemake -n`
+        make use of the `execute_command` function from `core.exec`
+
+        Notes:
+        - the prod environment has snakemake & conda installed already
+        - we expect the curator to have the conda env file if needed
+        - If a pixi env is being used utilize pixi environment workflow
+        - If conda env is being used utilize conda environment workflow
+
+        Returns: 
+            Str: The output of the dry run
+
+        Raises:
+            HTTPException: If there is an error performing the dry run.
+        """
+        logger.info("Starting dry run for pipeline")
+        if self.pixi_use:
+            command = f"pixi run snakemake -s {self.snakefile_path} -n"
+            cwd = f"{self.fs_path}"
+            try:
+                output = await execute_command(command, cwd)
+
+                # format output
+                output = str(output).replace("\\n", "")
+                output = output.replace("\\", "")
+                
+                return output
+            except Exception as error:
+                await self.delete_local()
+                raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")  
+
+        elif not self.pixi_use:
+            env_name = self.pipeline_name
+            command = f"source activate {env_name} && snakemake -s {self.snakefile_path} -n --use-conda"
+            cwd = f"{self.fs_path}"
+            try:
+                output = await execute_command(command, cwd)
+
+                # format output
+                output = str(output).replace("\\n", "")
+                output = output.replace("\\", "")
+                
+                return output
+            except Exception as error:
+                await self.delete_local()
+                await self.delete_conda_env()
+                raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}") 
+        
     async def delete_conda_env(self) -> None:
         """Delete conda environment.
 
@@ -164,6 +216,10 @@ class SnakemakePipeline(BaseModel):
         except Exception as error:
             await self.delete_local()
             raise HTTPException(status_code=400, detail=str(error))
+        
+    
+        
+    
 
 
 class CreatePipeline(SnakemakePipeline):
@@ -215,58 +271,6 @@ class CreatePipeline(SnakemakePipeline):
         """
 
         await clone_github_repo(self.git_url, self.fs_path)
-
-
-    async def dry_run(self) -> str:
-        """Dry run the pipeline.
-
-        Should be able to run `snakemake -n`
-        make use of the `execute_command` function from `core.exec`
-
-        Notes:
-        - the prod environment has snakemake & conda installed already
-        - we expect the curator to have the conda env file if needed
-        - If a pixi env is being used utilize pixi environment workflow
-        - If conda env is being used utilize conda environment workflow
-
-        Returns: 
-            Str: The output of the dry run
-
-        Raises:
-            HTTPException: If there is an error performing the dry run.
-        """
-        logger.info("Starting dry run for pipeline")
-        if self.pixi_use:
-            command = f"pixi run snakemake -s {self.snakefile_path} -n"
-            cwd = f"{self.fs_path}"
-            try:
-                output = await execute_command(command, cwd)
-
-                # format output
-                output = str(output).replace("\\n", "")
-                output = output.replace("\\", "")
-                
-                return output
-            except Exception as error:
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")  
-
-        elif not self.pixi_use:
-            env_name = self.pipeline_name
-            command = f"source activate {env_name} && snakemake -s {self.snakefile_path} -n --use-conda"
-            cwd = f"{self.fs_path}"
-            try:
-                output = await execute_command(command, cwd)
-
-                # format output
-                output = str(output).replace("\\n", "")
-                output = output.replace("\\", "")
-                
-                return output
-            except Exception as error:
-                await self.delete_local()
-                await self.delete_conda_env()
-                raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")   
         
 
     async def add_pipeline(self, collection: AsyncIOMotorCollection,) -> None:
