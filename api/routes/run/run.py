@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 database = get_database()
-snakemake_pipelines_collection = database["snakemake_pipeline"]
+snakemake_pipelines_collection = database["create_snakemake_pipeline"]
 
 async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	try:

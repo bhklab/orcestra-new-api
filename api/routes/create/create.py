@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 database = get_database()
-snakemake_pipelines_collection = database["snakemake_pipeline"]
+snakemake_pipelines_collection = database["create_snakemake_pipeline"]
 
 # Recieve a pipeline name, github url, list of output files, path to the snakefile, path to pipeline configurations, path to conda environment
 async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
