@@ -14,7 +14,7 @@ from pydantic import (
     Field,
 )
 
-from api.core.git import validate_github_repo, clone_github_repo, pull_github_repo, pull_latest_pipeline
+from api.core.git import validate_github_repo, clone_github_repo, pull_latest_pipeline
 from api.models.common import PyObjectId
 from fastapi import HTTPException
 from motor.motor_asyncio import AsyncIOMotorCollection
@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 database = get_database()
 snakemake_pipelines_collection = database["create_snakemake_pipeline"]
+ran_pipelines_collection = database["run_snakemake_pipeline"]
 
 class SnakemakePipeline(BaseModel):
     git_url: str
@@ -197,7 +198,17 @@ class SnakemakePipeline(BaseModel):
                 await self.delete_local()
                 await self.delete_conda_env()
                 raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}") 
-        
+    
+    async def create_pixi_or_conda_env(self) -> None:
+        """
+        Create either pixi or conda environment based on pixi flag.
+        """
+
+        if self.pixi_use:
+            await self.create_pixi_env()
+        elif not self.pixi_use:
+            await self.create_conda_env()
+
     async def delete_conda_env(self) -> None:
         """Delete conda environment.
 
@@ -215,11 +226,7 @@ class SnakemakePipeline(BaseModel):
                 raise HTTPException(status_code=400, detail=f"Environment {self.pipeline_name} does not exist at {env_path}")
         except Exception as error:
             await self.delete_local()
-            raise HTTPException(status_code=400, detail=str(error))
-        
-    
-        
-    
+            raise HTTPException(status_code=400, detail=str(error))      
 
 
 class CreatePipeline(SnakemakePipeline):
@@ -365,6 +372,32 @@ class RunPipeline(SnakemakePipeline):
                 await self.delete_conda_env()
                 await self.delete_local()
                 raise HTTPException(status_code=400, detail=f"Error running pipeline: {error}")
+            
+    async def save_run_entry(self) -> None:
+        """Save pipeline run entry into the database.
+
+        Raises:
+            HTTPException: If there is an error adding entry to db.
+        """
+        pipeline_data = await ran_pipelines_collection.find_one({"pipeline_name": self.pipeline_name})
+        logger.info("Adding pipeline run entry to database")
+        run_entry = {
+            "pipeline_name": self.pipeline_name,
+            "version": "1.0",
+            "git_url": self.git_url,
+            "output_files": self.output_files,
+            "snakefile_path": self.snakefile_path,
+            "config_file_path": self.config_file_path,
+            "conda_env_file_path": self.conda_env_file_path,
+            "pixi_use": self.pixi_use,
+            "force_run": self.force_run,
+            "release_notes": self.release_notes,
+            "run_at": datetime.now(timezone.utc).isoformat()
+        }
+        try:
+            await ran_pipelines_collection.insert_one(run_entry)
+        except ValueError as error:
+            raise HTTPException(status_code=401, detail=str(error))
         
 class Zenodo(BaseModel):
 

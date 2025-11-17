@@ -31,12 +31,8 @@ async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
     await pipeline.validate_local_file_paths()
 
     # Create either pixi or conda environment
-    if pipeline.pixi_use:
-        await pipeline.create_pixi_env()
-    elif not pipeline.pixi_use:
-        await pipeline.create_conda_env()
+    await pipeline.create_pixi_or_conda_env()
 
-    
     time.sleep(10)
         
     # perform a dry run of the pipeline and recieve output

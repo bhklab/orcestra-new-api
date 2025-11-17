@@ -26,11 +26,7 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	await pipeline.pull()
 
 	# Create either pixi or conda environment
-	if not pipeline.pixi_use:
-		if pipeline.pixi_use:
-			await pipeline.create_pixi_env()
-		elif not pipeline.pixi_use:
-			await pipeline.create_conda_env()
+	await pipeline.create_pixi_or_conda_env()
 
 	# run pipeline
 	run_status = await pipeline.execute_pipeline()
