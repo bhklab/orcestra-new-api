@@ -14,7 +14,7 @@ from pydantic import (
     Field,
 )
 
-from api.core.git import validate_github_repo, clone_github_repo, pull_latest_pipeline
+from api.core.git import validate_github_repo, clone_github_repo, pull_latest_pipeline, fetch_latest_commit_id
 from api.models.common import PyObjectId
 from fastapi import HTTPException
 from motor.motor_asyncio import AsyncIOMotorCollection
@@ -27,7 +27,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 database = get_database()
-snakemake_pipelines_collection = database["create_snakemake_pipeline"]
+create_snakemake_pipeline_collection = database["create_snakemake_pipeline"]
 ran_pipelines_collection = database["run_snakemake_pipeline"]
 
 class SnakemakePipeline(BaseModel):
@@ -297,6 +297,7 @@ class RunPipeline(SnakemakePipeline):
 
     force_run: bool
     # preserved_directories: Optional[List[str]]
+    new_release: bool
     release_notes: str
     
     async def pull(self) -> None:
@@ -379,20 +380,34 @@ class RunPipeline(SnakemakePipeline):
         Raises:
             HTTPException: If there is an error adding entry to db.
         """
-        pipeline_data = await ran_pipelines_collection.find_one({"pipeline_name": self.pipeline_name})
+
+        #Get latest commit id
+        commit_id = await fetch_latest_commit_id(self.fs_path)
+
+        #Get associated object_id of pipeline from create pipeline collection
+        create_pipeline_data = await create_snakemake_pipeline_collection.find_one({"pipeline_name": self.pipeline_name})
+        create_pipeline_id = create_pipeline_data["_id"]
+
+        #Retrieve most recent run to determine versioning
+        most_recent_run = await ran_pipelines_collection.find_one({"create_pipeline": create_pipeline_id}, sort = [("date", -1)])
+
+        #Determine version number
+        if not most_recent_run:
+            version = 1.0
+        elif self.new_release:
+            version = round(float(int(most_recent_run["version"]) + 1), 1)
+        else:
+            version = round(float(most_recent_run["version"]) + 0.1, 1)
         logger.info("Adding pipeline run entry to database")
         run_entry = {
-            "pipeline_name": self.pipeline_name,
-            "version": "1.0",
-            "git_url": self.git_url,
-            "output_files": self.output_files,
-            "snakefile_path": self.snakefile_path,
-            "config_file_path": self.config_file_path,
-            "conda_env_file_path": self.conda_env_file_path,
-            "pixi_use": self.pixi_use,
-            "force_run": self.force_run,
+            "run_name": f'{self.pipeline_name}_v{version}',
+            "commit_id": commit_id,
+            "version": version,
+            "new_release": self.new_release,
+            "date": self.last_updated_at,
             "release_notes": self.release_notes,
-            "run_at": datetime.now(timezone.utc).isoformat()
+            "create_pipeline": create_pipeline_id
+
         }
         try:
             await ran_pipelines_collection.insert_one(run_entry)
@@ -410,7 +425,7 @@ class Zenodo(BaseModel):
             bool: True
     """
     async def zenodo_upload (self) -> bool:
-        pipeline_data = await snakemake_pipelines_collection.find_one({"pipeline_name": self.pipeline_name})
+        pipeline_data = await create_snakemake_pipeline_collection.find_one({"pipeline_name": self.pipeline_name})
 
         headers = {"Content-Type": "application/json"}
         params = {'access_token': os.getenv("SANDBOX_TOKEN")}

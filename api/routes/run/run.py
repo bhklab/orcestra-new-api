@@ -6,12 +6,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 database = get_database()
-snakemake_pipelines_collection = database["create_snakemake_pipeline"]
+create_snakemake_pipeline_collection = database["create_snakemake_pipeline"]
 
 async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	try:
 		pipeline_name = data['pipeline_name']
-		pipeline_data = await snakemake_pipelines_collection.find_one({"pipeline_name": pipeline_name})
+		pipeline_data = await create_snakemake_pipeline_collection.find_one({"pipeline_name": pipeline_name})
 		if pipeline_data is None:
 			raise HTTPException(status_code=404, detail="Pipeline not found")
 	
@@ -27,6 +27,10 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 
 	# Create either pixi or conda environment
 	await pipeline.create_pixi_or_conda_env()
+
+	#Dry run pipeline just to see if anything is obviously wrong before actual execution
+	await pipeline.dry_run()
+	logger.info("Pipeline dry-run completed")
 
 	# run pipeline
 	run_status = await pipeline.execute_pipeline()
@@ -44,6 +48,7 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 		await pipeline.delete_conda_env()
 
 	pipeline.last_updated_at = datetime.now(timezone.utc).isoformat()
+	await pipeline.save_run_entry()
 
 	return {
 		"success": True,

@@ -7,14 +7,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 database = get_database()
-snakemake_pipelines_collection = database["create_snakemake_pipeline"]
+create_snakemake_pipeline_collection = database["create_snakemake_pipeline"]
 
 # Recieve a pipeline name, github url, list of output files, path to the snakefile, path to pipeline configurations, path to conda environment
 async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
     try:
         pipeline = CreatePipeline(**data)
         logger.info("Pipeline creation process started for: %s", pipeline.pipeline_name)
-        if await pipeline.git_url_exists(snakemake_pipelines_collection):
+        if await pipeline.git_url_exists(create_snakemake_pipeline_collection):
             raise HTTPException(status_code=400, detail="Git url already exists in database")
 
     except KeyError as error:
@@ -52,7 +52,7 @@ async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
     logger.info("Pipeline dry run successful")
 
     # add to database
-    await pipeline.add_pipeline(snakemake_pipelines_collection)
+    await pipeline.add_pipeline(create_snakemake_pipeline_collection)
     return {"clone_status": "Pipeline cloned successfully",
             "configuration_checks": "Pipeline passed configuration checks",
             "dry_run_status": str(dry_run_status),

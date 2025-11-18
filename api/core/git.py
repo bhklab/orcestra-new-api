@@ -95,3 +95,22 @@ async def pull_latest_pipeline(dest: Path) -> Repo:
     except GitCommandError as git_error:
         raise git_error
 
+async def fetch_latest_commit_id(dest: Path) -> str:
+    """Fetch the latest commit ID from a GitHub repository.
+
+    Args:
+      dest (Path): The destination path where the repository is cloned.
+
+    Returns:
+      str: The latest commit ID of repo.
+
+    Raises:
+      GitCommandError: If there is an error while fetching the latest commit ID.
+    """
+    try:
+        repo = Repo(dest)
+        latest_commit = repo.head.commit.hexsha
+        return latest_commit
+
+    except GitCommandError as git_error:
+        raise git_error
