@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 database = get_database()
 create_snakemake_pipeline_collection = database["create_snakemake_pipeline"]
 ran_pipelines_collection = database["run_snakemake_pipeline"]
+zenodo_sandbox_collection = database["zenodo_sandbox"]
 
 class SnakemakePipeline(BaseModel):
     git_url: str
@@ -437,7 +438,8 @@ class Zenodo(BaseModel):
                     "metadata": {
                         "title": self.pipeline_name,
                         "upload_type": "dataset",
-                        "description": "Dataset description from config file",
+                        "description": "Dataset created from Orcestra",
+                        "creators": [{"name": "Mess, Nick", "affiliation": "UHN"}]
                 }},
                 headers=headers
             )
@@ -448,6 +450,8 @@ class Zenodo(BaseModel):
             raise HTTPException(status_code=r.status_code, detail=f"Error uploading dataset to zenodo with error code: {r.status_code}")
         logger.info("Zenodo entry created successfully")
         # retrieve path to put files on zenodo
+        
+        deposit_id = r.json()["id"] 
         bucket_url = r.json()["links"]["bucket"]
 
         # get files to be uploaded to Zenodo
@@ -469,8 +473,31 @@ class Zenodo(BaseModel):
 
         if r.status_code == '401' or r.status_code == '400':
             raise HTTPException(status_code=r.status_code, detail=f"Error uploading dataset to zenodo with error code: {r.status_code}")
-        return {"success": True}
     
+        #publish the new zenodo entry in the sandbox envirnment to activate download links
+        try:
+            r = requests.post(
+                f'https://sandbox.zenodo.org/api/deposit/depositions/{deposit_id}/actions/publish',
+                params=params,
+                headers=headers
+            )
+            logger.info("Zenodo entry published successfully")
+        except Exception as error:
+            raise HTTPException(status_code=r.status_code, detail=f"Error publishing new Zenodo entry: {r.status_code}")
+        
+        #create download links for each file uploaded and to list
+        download_links = []
+        for filename in files:
+            download_links.append({filename: f"https://sandbox.zenodo.org/records/{deposit_id}/files/{filename}?download=1"})
+
+
+        zenodo_sandbox_collection.insert_one({
+            "name": self.pipeline_name,
+            "deposit_id": deposit_id,
+            "download_links": download_links
+        })
+        return {"success": True}
+ 
 
 class UpdatePipeline(SnakemakePipeline):
     # remove the pipeline_name from the update
