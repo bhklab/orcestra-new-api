@@ -407,7 +407,6 @@ class RunPipeline(SnakemakePipeline):
             "date": self.last_updated_at,
             "release_notes": self.release_notes,
             "create_pipeline": create_pipeline_id
-
         }
         try:
             await ran_pipelines_collection.insert_one(run_entry)
@@ -426,7 +425,7 @@ class Zenodo(BaseModel):
     """
     async def zenodo_upload (self) -> bool:
         pipeline_data = await create_snakemake_pipeline_collection.find_one({"pipeline_name": self.pipeline_name})
-
+        logger.info("Uploading pipeline results to Zenodo")
         headers = {"Content-Type": "application/json"}
         params = {'access_token': os.getenv("SANDBOX_TOKEN")}
 
@@ -447,7 +446,7 @@ class Zenodo(BaseModel):
 
         if r.status_code == '401' or r.status_code == '400':
             raise HTTPException(status_code=r.status_code, detail=f"Error uploading dataset to zenodo with error code: {r.status_code}")
-
+        logger.info("Zenodo entry created successfully")
         # retrieve path to put files on zenodo
         bucket_url = r.json()["links"]["bucket"]
 
@@ -464,13 +463,13 @@ class Zenodo(BaseModel):
                         data=fp,
                         params=params,
                     )
+            logger.info("Files uploaded to Zenodo successfully")
         except Exception as error:
             raise HTTPException(status_code=r.status_code, detail=f"Error uploading files to new Zenodo entry: {r.status_code}")
 
         if r.status_code == '401' or r.status_code == '400':
             raise HTTPException(status_code=r.status_code, detail=f"Error uploading dataset to zenodo with error code: {r.status_code}")
-
-        return False
+        return {"success": True}
     
 
 class UpdatePipeline(SnakemakePipeline):
