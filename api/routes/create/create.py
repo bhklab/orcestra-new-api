@@ -39,11 +39,11 @@ async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
     dry_run_status = await pipeline.dry_run()
         
     # if dry-run contains unsucessful output throw exception
-    if "The order of jobs does not reflect the order of execution" not in dry_run_status:
+    if dry_run_status[0] != 0:
         if not pipeline.pixi_use:
                     await pipeline.delete_conda_env()
         await pipeline.delete_local()
-        raise HTTPException(status_code=400, detail=(f"Error performing dry run: {dry_run_status}"))
+        raise HTTPException(status_code=400, detail=(f"Error performing dry run: {dry_run_status[2]}"))
     
     # delete conda environment after dry run
     if not pipeline.pixi_use:

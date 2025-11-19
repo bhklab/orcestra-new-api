@@ -148,7 +148,7 @@ class SnakemakePipeline(BaseModel):
             await self.delete_local()
             raise HTTPException(status_code=400, detail=str(error))
         
-    async def dry_run(self) -> str:
+    async def dry_run(self) -> tuple[int, str, str]:
         """Dry run the pipeline.
 
         Should be able to run `snakemake -n`
@@ -171,13 +171,14 @@ class SnakemakePipeline(BaseModel):
             command = f"pixi run snakemake -s {self.snakefile_path} -n"
             cwd = f"{self.fs_path}"
             try:
-                output = await execute_command(command, cwd)
+                exit_status, stdout, stderr = await execute_command(command, cwd)
 
                 # format output
-                output = str(output).replace("\\n", "")
-                output = output.replace("\\", "")
-                
-                return output
+                stdout = stdout.replace("\n", " ").replace("\\", " ")
+                stderr = stderr.replace("\n", " ").replace("\\", " ")
+
+                return exit_status, stdout, stderr
+
             except Exception as error:
                 await self.delete_local()
                 raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")  
@@ -187,13 +188,13 @@ class SnakemakePipeline(BaseModel):
             command = f"source activate {env_name} && snakemake -s {self.snakefile_path} -n --use-conda"
             cwd = f"{self.fs_path}"
             try:
-                output = await execute_command(command, cwd)
+                exit_status, stdout, stderr = await execute_command(command, cwd)
 
                 # format output
-                output = str(output).replace("\\n", "")
-                output = output.replace("\\", "")
-                
-                return output
+                stdout = stdout.replace("\n", " ").replace("\\", " ")
+                stderr = stderr.replace("\n", " ").replace("\\", " ")
+
+                return exit_status, stdout, stderr
             except Exception as error:
                 await self.delete_local()
                 await self.delete_conda_env()
@@ -315,7 +316,7 @@ class RunPipeline(SnakemakePipeline):
             raise Exception(f"Error validating local paths: {ae}")
 
 
-    async def execute_pipeline (self) -> None:
+    async def execute_pipeline (self) -> tuple[int, str, str]:
         """Run the pipeline.
 
         Runs `snakemake -s` with the additional force run option by making
@@ -344,13 +345,13 @@ class RunPipeline(SnakemakePipeline):
             cwd = f"{self.fs_path}"
 
             try:
-                output = await execute_command(command, cwd)
+                exit_status, stdout, stderr = await execute_command(command, cwd)
 
                 # format output
-                output = str(output).replace("\\n", " ")
-                output = output.replace("\\", " ")
+                stdout = stdout.replace("\n", " ").replace("\\", " ")
+                stderr = stderr.replace("\n", " ").replace("\\", " ")
 
-                return output
+                return exit_status, stdout, stderr
             
             except Exception as error:
                 await self.delete_local()
@@ -361,13 +362,13 @@ class RunPipeline(SnakemakePipeline):
             cwd = f"{self.fs_path}"
 
             try:
-                output = await execute_command(command, cwd)
+                exit_status, stdout, stderr = await execute_command(command, cwd)
 
                 # format output
-                output = str(output).replace("\\n", " ")
-                output = output.replace("\\", " ")
+                stdout = stdout.replace("\n", " ").replace("\\", " ")
+                stderr = stderr.replace("\n", " ").replace("\\", " ")
 
-                return output
+                return exit_status, stdout, stderr
             
             except Exception as error:
                 await self.delete_conda_env()

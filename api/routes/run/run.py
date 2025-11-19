@@ -38,7 +38,7 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	if run_status[0] != 0:
 		if not pipeline.pixi_use:
 			await pipeline.delete_conda_env()
-		raise HTTPException(status_code=400, detail=(f"Error running pipeline: {run_status}"))
+		raise HTTPException(status_code=400, detail=(f"Error running pipeline: {run_status[2]}"))
 
 	logger.info("Pipeline run successful")
 	# delete conda environment after run
@@ -50,5 +50,5 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 
 	return {
 		"success": True,
-		"run_status": str(run_status),
+		"run_status": str(run_status[2]),
 		"pipeline_database_entry": pipeline.model_dump()}
