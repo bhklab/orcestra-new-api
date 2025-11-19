@@ -14,19 +14,21 @@ from pydantic import (
     Field,
 )
 
-from api.core.git import validate_github_repo, clone_github_repo, pull_github_repo, pull_latest_pipeline
+from api.core.git import validate_github_repo, clone_github_repo, pull_latest_pipeline, fetch_latest_commit_id
 from api.models.common import PyObjectId
 from fastapi import HTTPException
 from motor.motor_asyncio import AsyncIOMotorCollection
 from api.db import get_database
 import os
 import shutil
+import requests
 import logging
 
 logger = logging.getLogger(__name__)
 
 database = get_database()
-snakemake_pipelines_collection = database["snakemake_pipeline"]
+create_snakemake_pipeline_collection = database["create_snakemake_pipeline"]
+ran_pipelines_collection = database["run_snakemake_pipeline"]
 
 class SnakemakePipeline(BaseModel):
     git_url: str
@@ -146,6 +148,68 @@ class SnakemakePipeline(BaseModel):
             await self.delete_local()
             raise HTTPException(status_code=400, detail=str(error))
         
+    async def dry_run(self) -> tuple[int, str, str]:
+        """Dry run the pipeline.
+
+        Should be able to run `snakemake -n`
+        make use of the `execute_command` function from `core.exec`
+
+        Notes:
+        - the prod environment has snakemake & conda installed already
+        - we expect the curator to have the conda env file if needed
+        - If a pixi env is being used utilize pixi environment workflow
+        - If conda env is being used utilize conda environment workflow
+
+        Returns: 
+            Str: The output of the dry run
+
+        Raises:
+            HTTPException: If there is an error performing the dry run.
+        """
+        logger.info("Starting dry run for pipeline")
+        if self.pixi_use:
+            command = f"pixi run snakemake -s {self.snakefile_path} -n"
+            cwd = f"{self.fs_path}"
+            try:
+                exit_status, stdout, stderr = await execute_command(command, cwd)
+
+                # format output
+                stdout = stdout.replace("\n", " ").replace("\\", " ")
+                stderr = stderr.replace("\n", " ").replace("\\", " ")
+
+                return exit_status, stdout, stderr
+
+            except Exception as error:
+                await self.delete_local()
+                raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")  
+
+        elif not self.pixi_use:
+            env_name = self.pipeline_name
+            command = f"source activate {env_name} && snakemake -s {self.snakefile_path} -n --use-conda"
+            cwd = f"{self.fs_path}"
+            try:
+                exit_status, stdout, stderr = await execute_command(command, cwd)
+
+                # format output
+                stdout = stdout.replace("\n", " ").replace("\\", " ")
+                stderr = stderr.replace("\n", " ").replace("\\", " ")
+
+                return exit_status, stdout, stderr
+            except Exception as error:
+                await self.delete_local()
+                await self.delete_conda_env()
+                raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}") 
+    
+    async def create_pixi_or_conda_env(self) -> None:
+        """
+        Create either pixi or conda environment based on pixi flag.
+        """
+
+        if self.pixi_use:
+            await self.create_pixi_env()
+        elif not self.pixi_use:
+            await self.create_conda_env()
+
     async def delete_conda_env(self) -> None:
         """Delete conda environment.
 
@@ -163,7 +227,7 @@ class SnakemakePipeline(BaseModel):
                 raise HTTPException(status_code=400, detail=f"Environment {self.pipeline_name} does not exist at {env_path}")
         except Exception as error:
             await self.delete_local()
-            raise HTTPException(status_code=400, detail=str(error))
+            raise HTTPException(status_code=400, detail=str(error))      
 
 
 class CreatePipeline(SnakemakePipeline):
@@ -215,58 +279,6 @@ class CreatePipeline(SnakemakePipeline):
         """
 
         await clone_github_repo(self.git_url, self.fs_path)
-
-
-    async def dry_run(self) -> str:
-        """Dry run the pipeline.
-
-        Should be able to run `snakemake -n`
-        make use of the `execute_command` function from `core.exec`
-
-        Notes:
-        - the prod environment has snakemake & conda installed already
-        - we expect the curator to have the conda env file if needed
-        - If a pixi env is being used utilize pixi environment workflow
-        - If conda env is being used utilize conda environment workflow
-
-        Returns: 
-            Str: The output of the dry run
-
-        Raises:
-            HTTPException: If there is an error performing the dry run.
-        """
-        logger.info("Starting dry run for pipeline")
-        if self.pixi_use:
-            command = f"pixi run snakemake -s {self.snakefile_path} -n"
-            cwd = f"{self.fs_path}"
-            try:
-                output = await execute_command(command, cwd)
-
-                # format output
-                output = str(output).replace("\\n", "")
-                output = output.replace("\\", "")
-                
-                return output
-            except Exception as error:
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")  
-
-        elif not self.pixi_use:
-            env_name = self.pipeline_name
-            command = f"source activate {env_name} && snakemake -s {self.snakefile_path} -n --use-conda"
-            cwd = f"{self.fs_path}"
-            try:
-                output = await execute_command(command, cwd)
-
-                # format output
-                output = str(output).replace("\\n", "")
-                output = output.replace("\\", "")
-                
-                return output
-            except Exception as error:
-                await self.delete_local()
-                await self.delete_conda_env()
-                raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")   
         
 
     async def add_pipeline(self, collection: AsyncIOMotorCollection,) -> None:
@@ -286,6 +298,7 @@ class RunPipeline(SnakemakePipeline):
 
     force_run: bool
     # preserved_directories: Optional[List[str]]
+    new_release: bool
     release_notes: str
     
     async def pull(self) -> None:
@@ -303,7 +316,7 @@ class RunPipeline(SnakemakePipeline):
             raise Exception(f"Error validating local paths: {ae}")
 
 
-    async def execute_pipeline (self) -> None:
+    async def execute_pipeline (self) -> tuple[int, str, str]:
         """Run the pipeline.
 
         Runs `snakemake -s` with the additional force run option by making
@@ -332,13 +345,13 @@ class RunPipeline(SnakemakePipeline):
             cwd = f"{self.fs_path}"
 
             try:
-                output = await execute_command(command, cwd)
+                exit_status, stdout, stderr = await execute_command(command, cwd)
 
                 # format output
-                output = str(output).replace("\\n", " ")
-                output = output.replace("\\", " ")
+                stdout = stdout.replace("\n", " ").replace("\\", " ")
+                stderr = stderr.replace("\n", " ").replace("\\", " ")
 
-                return output
+                return exit_status, stdout, stderr
             
             except Exception as error:
                 await self.delete_local()
@@ -349,18 +362,57 @@ class RunPipeline(SnakemakePipeline):
             cwd = f"{self.fs_path}"
 
             try:
-                output = await execute_command(command, cwd)
+                exit_status, stdout, stderr = await execute_command(command, cwd)
 
                 # format output
-                output = str(output).replace("\\n", " ")
-                output = output.replace("\\", " ")
+                stdout = stdout.replace("\n", " ").replace("\\", " ")
+                stderr = stderr.replace("\n", " ").replace("\\", " ")
 
-                return output
+                return exit_status, stdout, stderr
             
             except Exception as error:
                 await self.delete_conda_env()
                 await self.delete_local()
                 raise HTTPException(status_code=400, detail=f"Error running pipeline: {error}")
+            
+    async def save_run_entry(self) -> None:
+        """Save pipeline run entry into the database.
+
+        Raises:
+            HTTPException: If there is an error adding entry to db.
+        """
+
+        #Get latest commit id
+        commit_id = await fetch_latest_commit_id(self.fs_path)
+
+        #Get associated object_id of pipeline from create pipeline collection
+        create_pipeline_data = await create_snakemake_pipeline_collection.find_one({"pipeline_name": self.pipeline_name})
+        create_pipeline_id = create_pipeline_data["_id"]
+
+        #Retrieve most recent run to determine versioning
+        most_recent_run = await ran_pipelines_collection.find_one({"create_pipeline": create_pipeline_id}, sort = [("date", -1)])
+
+        #Determine version number
+        if not most_recent_run:
+            version = 1.0
+        elif self.new_release:
+            version = round(float(int(most_recent_run["version"]) + 1), 1)
+        else:
+            version = round(float(most_recent_run["version"]) + 0.1, 1)
+        logger.info("Adding pipeline run entry to database")
+        run_entry = {
+            "run_name": f'{self.pipeline_name}_v{version}',
+            "commit_id": commit_id,
+            "version": version,
+            "new_release": self.new_release,
+            "date": self.last_updated_at,
+            "release_notes": self.release_notes,
+            "create_pipeline": create_pipeline_id
+        }
+        try:
+            await ran_pipelines_collection.insert_one(run_entry)
+        except ValueError as error:
+            raise HTTPException(status_code=401, detail=str(error))
         
 class Zenodo(BaseModel):
 
@@ -373,8 +425,8 @@ class Zenodo(BaseModel):
             bool: True
     """
     async def zenodo_upload (self) -> bool:
-        pipeline_data = await snakemake_pipelines_collection.find_one({"pipeline_name": self.pipeline_name})
-
+        pipeline_data = await create_snakemake_pipeline_collection.find_one({"pipeline_name": self.pipeline_name})
+        logger.info("Uploading pipeline results to Zenodo")
         headers = {"Content-Type": "application/json"}
         params = {'access_token': os.getenv("SANDBOX_TOKEN")}
 
@@ -395,7 +447,7 @@ class Zenodo(BaseModel):
 
         if r.status_code == '401' or r.status_code == '400':
             raise HTTPException(status_code=r.status_code, detail=f"Error uploading dataset to zenodo with error code: {r.status_code}")
-
+        logger.info("Zenodo entry created successfully")
         # retrieve path to put files on zenodo
         bucket_url = r.json()["links"]["bucket"]
 
@@ -412,13 +464,13 @@ class Zenodo(BaseModel):
                         data=fp,
                         params=params,
                     )
+            logger.info("Files uploaded to Zenodo successfully")
         except Exception as error:
             raise HTTPException(status_code=r.status_code, detail=f"Error uploading files to new Zenodo entry: {r.status_code}")
 
         if r.status_code == '401' or r.status_code == '400':
             raise HTTPException(status_code=r.status_code, detail=f"Error uploading dataset to zenodo with error code: {r.status_code}")
-
-        return False
+        return {"success": True}
     
 
 class UpdatePipeline(SnakemakePipeline):

@@ -7,10 +7,11 @@ from api.models.Pipeline import Zenodo
 
 
 database = get_database()
-snakemake_pipelines_collection = database["snakemake_pipeline"]
+create_snakemake_pipeline_collection = database["create_snakemake_pipeline"]
 
 load_dotenv()
 
 async def zenodo_upload (pipeline: Zenodo) -> None:
-	upload_status = pipeline.zenodo_upload()
+	upload_status = await pipeline.zenodo_upload()
+	return upload_status
 
