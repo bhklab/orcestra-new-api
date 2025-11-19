@@ -417,7 +417,12 @@ class RunPipeline(SnakemakePipeline):
 class Zenodo(BaseModel):
 
     pipeline_name: str
-
+    upload_type : str = "dataset"
+    creators: List[dict] = [{"name": 'Haibe-Kains, Benjamin',
+             "orcid": '0000-0002-7684-0079',
+             "type": "ContactPerson"}]
+    description: str = "Dataset created from Orcestra"
+    dataset_type: str
     """
         Create new Zenodo entry for dataset and upload output files
 
@@ -486,9 +491,9 @@ class Zenodo(BaseModel):
             raise HTTPException(status_code=r.status_code, detail=f"Error publishing new Zenodo entry: {r.status_code}")
         
         #create download links for each file uploaded and to list
-        download_links = []
+        download_links = {}
         for filename in files:
-            download_links.append({filename: f"https://sandbox.zenodo.org/records/{deposit_id}/files/{filename}?download=1"})
+            download_links[filename] = f"https://sandbox.zenodo.org/records/{deposit_id}/files/{filename}?download=1"
 
 
         zenodo_sandbox_collection.insert_one({
