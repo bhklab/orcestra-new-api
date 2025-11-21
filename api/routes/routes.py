@@ -39,8 +39,8 @@ async def delete_pipeline_endpoint(pipeline_name: str):
 
 @router.post('/zenodo', response_model=Dict)
 async def zenodo_upload_endpoint(data: Zenodo):
+
     try:
         return await zenodo_upload(data)
     except ValidationError as e:
         raise HTTPException(status_code=400, detail="Validation error: " + str(e.errors()))
-    

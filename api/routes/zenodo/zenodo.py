@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from api.db import get_database
 from api.models.Pipeline import Zenodo
+from typing import Dict, Any
 
 
 database = get_database()
@@ -11,7 +12,8 @@ create_snakemake_pipeline_collection = database["create_snakemake_pipeline"]
 
 load_dotenv()
 
-async def zenodo_upload (pipeline: Zenodo) -> None:
+async def zenodo_upload (pipeline: Zenodo) -> Dict[str, Any]:
+	
 	upload_status = await pipeline.zenodo_upload()
 	return upload_status
 
