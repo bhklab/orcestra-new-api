@@ -43,4 +43,3 @@ async def zenodo_upload_endpoint(data: Zenodo):
         return await zenodo_upload(data)
     except ValidationError as e:
         raise HTTPException(status_code=400, detail="Validation error: " + str(e.errors()))
-    
