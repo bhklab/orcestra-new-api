@@ -468,6 +468,15 @@ class Zenodo(BaseModel):
 
 
     async def _validate_pipeline_exists(self) -> Union[Tuple[Dict[str, Any], bool], None]:
+        """
+        Validate that the pipeline exists in the database and retrieve most recent run information.
+        Returns:
+            Union[Tuple[Dict[str, Any], bool], None]: Most recent Existing zenodo entry and a boolean indicating whether to update existing entry,
+            or None if no existing entry is found.
+        Raises:
+            HTTPException: If the pipeline does not exist in the database or has no recorded runs.
+        """
+        
         #check that pipeline exists in create pipeline collection
         create_pipeline_data = await create_snakemake_pipeline_collection.find_one({"pipeline_name": self.pipeline_name})
         if not create_pipeline_data:
@@ -518,6 +527,14 @@ class Zenodo(BaseModel):
         return metadata
     
     def _create_new_zenodo_entry(self, metadata: dict) -> tuple[int, str]:
+        """
+        Create new zenodo entry.
+        Returns:
+            tuple: deposition id and bucket url for new entry.
+        Raises:
+            HTTPException: If there is an error creating the entry.
+        """
+        
         headers = {"Content-Type": "application/json"}
         params = {'access_token': os.getenv("SANDBOX_TOKEN")}
 
@@ -539,6 +556,10 @@ class Zenodo(BaseModel):
     
 
     def _update_existing_zenodo_entry(self, existing_entry: dict, metadata: dict) -> None:
+        """
+        Update existing zenodo entry with new metadata.
+        Raises:
+            HTTPException: If there is an error updating the entry."""
         
         data = {"metadata": metadata}
         url = "https://sandbox.zenodo.org/api/deposit/depositions/{}".format(existing_entry["deposit_id"])
@@ -556,6 +577,14 @@ class Zenodo(BaseModel):
 
     
     def _new_version(self, existing_entry: dict, metadata: dict) -> tuple[int, str]:
+
+        """
+        Create new version of existing zenodo entry.
+        Returns:
+            tuple: deposition id and bucket url for new version.
+        Raises:
+            HTTPException: If there is an error creating new version.
+        """
 
         url = "https://sandbox.zenodo.org/api/deposit/depositions/{}/actions/newversion".format(existing_entry["deposit_id"])
         headers = {"Authorization": f"Bearer {os.getenv('SANDBOX_TOKEN')}"}
@@ -582,11 +611,21 @@ class Zenodo(BaseModel):
 
     
     async def zenodo_upload(self) -> dict[str, str]:
+
+        """
+        Upload most recent pipeline run results to Zenodo sandbox.
+        Returns:
+            dict: Dictionary containing sandbox URL and success status.
+        Raises:
+            HTTPException: If there is an error during the upload process.
+        
+        """
         
         #Upload pipeline results to Zenodo sandbox.
         logger.info("Checking that pipeline exists in database and retrieving most recent run information")
         operation = await self._validate_pipeline_exists()
         metadata = self._structure_metadata()
+        #Determine whether to create new entry, update existing entry, or create new version
         if operation:
             existing_zenodo_entry, update_existing = operation
             if update_existing:
@@ -602,7 +641,7 @@ class Zenodo(BaseModel):
             logger.info("Creating new Zenodo sandbox entry")
             deposit_id, bucket_url = self._create_new_zenodo_entry(metadata)
 
-        
+        #Upload files to zenodo sandbox only if new entry or new version
         if not operation or not update_existing:
             # get files to be uploaded to Zenodo
             path = Path.home() / "pipelines" / self.pipeline_name / "results"
@@ -642,11 +681,11 @@ class Zenodo(BaseModel):
             for filename in files:
                 download_links[filename] = f"https://sandbox.zenodo.org/records/{deposit_id}/files/{filename}?download=1"
 
-        #create entry in zenodo_sandbox collection
+        #create entry in zenodo_sandbox collection in db
         zenodo_entry = metadata
         zenodo_entry["deposit_id"] = deposit_id
 
-        #bucket url and download links only set if new entry or new version else set to existing values
+        #bucket url and download links only set if new entry or new version else set to existing values in most recent zenodo entry
         zenodo_entry["download_links"] = download_links if not operation or not update_existing else existing_zenodo_entry["download_links"]
         zenodo_entry["bucket_url"] = bucket_url if not operation or not update_existing else existing_zenodo_entry["bucket_url"]
 
