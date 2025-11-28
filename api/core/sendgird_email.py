@@ -21,6 +21,6 @@ async def send_email(to_email: str, pipeline_name: str, run_status: str, error_o
     message.template_id = os.getenv("SENDGRID_TEMPLATE_ID")
     try:
         sg = SendGridAPIClient(os.getenv("SENDGRID_API_KEY"))
-        await sg.send(message)
+        sg.send(message)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error sending director email {str(e)}")
