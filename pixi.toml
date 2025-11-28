@@ -19,6 +19,7 @@ conda = ">=24.5.0,<24.6"
 snakemake = "==7.32.4"
 email-validator = ">=2.2.0,<2.3"
 colorlog = ">=6.9.0,<7"
+sendgrid = ">=6.12.4,<7"
 
 [tasks]
 start = "uvicorn api.main:app --reload --reload-dir api"
