@@ -365,7 +365,7 @@ class RunPipeline(SnakemakePipeline):
             
             except Exception as error:
                 await self.delete_local()
-                await send_email(self.email, self.pipeline_name, "Unsuccessful", error)
+                await send_email(self.email, self.pipeline_name, "unsuccessful", error)
                 return
         elif not self.pixi_use:
             env_name = self.pipeline_name
@@ -382,20 +382,20 @@ class RunPipeline(SnakemakePipeline):
             except Exception as error:
                 await self.delete_conda_env()
                 await self.delete_local()
-                await send_email(self.email, self.pipeline_name, "Unsuccessful", error)
+                await send_email(self.email, self.pipeline_name, "unsuccessful", error)
                 return
             
         if exit_status != 0:
             if not self.pixi_use:
                 await self.delete_conda_env()
-                await send_email(self.email, self.pipeline_name, "Unsuccessful", stderr)
+                await send_email(self.email, self.pipeline_name, "unsuccessful", stderr)
                 return
 
         # delete conda environment after run
         if not self.pixi_use:
             await self.delete_conda_env()
 
-        await send_email(self.email, self.pipeline_name, "Successful", f'Standard Output: {stdout}. Standard Error: {stderr}')
+        await send_email(self.email, self.pipeline_name, "successful", f'Standard Output: {stdout}. Standard Error: {stderr}')
 
         self.last_updated_at = datetime.now(timezone.utc).isoformat()
         await self.save_run_entry()
@@ -410,11 +410,8 @@ class RunPipeline(SnakemakePipeline):
         #Get latest commit id
         commit_id = await fetch_latest_commit_id(self.fs_path)
         #need to re-instantiate database connection within thread to not share across threads
-        MONGO_DETAILS = os.getenv("MONGO_URI")
-        DATABASE_NAME = os.getenv("DATABASE_NAME")
+        database = get_database() #get new database connection within thread
 
-        client = AsyncIOMotorClient(MONGO_DETAILS)
-        database = client[DATABASE_NAME]
         create_snakemake_pipeline_collection = database["create_snakemake_pipeline"]
         ran_pipelines_collection = database["run_snakemake_pipeline"]
 

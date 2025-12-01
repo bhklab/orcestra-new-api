@@ -6,12 +6,12 @@ from pymongo.database import Database
 from dotenv import load_dotenv
 
 load_dotenv()
-
+#Move code inside function to avoid cross-thread issues
 MONGO_DETAILS = os.getenv("MONGO_URI")
 DATABASE_NAME = os.getenv("DATABASE_NAME")
 
-client = AsyncIOMotorClient(MONGO_DETAILS)
-database = client[DATABASE_NAME]
-
 def get_database() -> Database:
+    # Create a new MongoDB client and return the new database instance. We do this inside the function to avoid cross-thread issues.
+    client = AsyncIOMotorClient(MONGO_DETAILS)
+    database = client[DATABASE_NAME]
     return database

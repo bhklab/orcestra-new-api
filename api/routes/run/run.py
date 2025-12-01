@@ -37,7 +37,7 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 
 	# run pipeline
 	logger.info("Starting pipeline run")
-	thread = threading.Thread(target=run_pipeline_in_thread, args=(pipeline,))
+	thread = threading.Thread(target= run_pipeline_in_thread, args=(pipeline,))
 	thread.start()
 
 	return {
