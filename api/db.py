@@ -6,7 +6,6 @@ from pymongo.database import Database
 from dotenv import load_dotenv
 
 load_dotenv()
-#Move code inside function to avoid cross-thread issues
 MONGO_DETAILS = os.getenv("MONGO_URI")
 DATABASE_NAME = os.getenv("DATABASE_NAME")
 
