@@ -3,6 +3,9 @@ from fastapi import Depends, HTTPException
 from api.db import get_database
 from datetime import datetime, timezone
 import logging
+import threading
+import asyncio
+import os
 
 logger = logging.getLogger(__name__)
 database = get_database()
@@ -33,22 +36,24 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	logger.info("Pipeline dry-run completed")
 
 	# run pipeline
-	run_status = await pipeline.execute_pipeline()
-	# if pipeline run contains unsuccessful output throw exception
-	if run_status[0] != 0:
-		if not pipeline.pixi_use:
-			await pipeline.delete_conda_env()
-		raise HTTPException(status_code=400, detail=(f"Error running pipeline: {run_status[2]}"))
-
-	logger.info("Pipeline run successful")
-	# delete conda environment after run
-	if not pipeline.pixi_use:
-		await pipeline.delete_conda_env()
-
-	pipeline.last_updated_at = datetime.now(timezone.utc).isoformat()
-	await pipeline.save_run_entry()
+	logger.info("Starting pipeline run")
+	thread = threading.Thread(target= run_pipeline_in_thread, args=(pipeline,))
+	thread.start()
 
 	return {
 		"success": True,
-		"run_status": str(run_status[2]),
-		"pipeline_database_entry": pipeline.model_dump()}
+		"run_status": f"{pipeline.pipeline_name} Pipeline is running. You will receive an email soon outlining the status of your run. Thank you."
+	}
+
+def run_pipeline_in_thread(pipeline_instance):
+    """A synchronous wrapper function to start an asyncio event loop in a new thread."""
+    # This function runs entirely within the new thread after thread.start() is called
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        # Run the async pipeline function to completion within this new thread's loop
+        loop.run_until_complete(pipeline_instance.execute_pipeline())
+    except Exception as e:
+        logging.exception("Error running pipeline in separate thread:")
+    finally:
+        loop.close()

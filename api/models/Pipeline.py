@@ -14,6 +14,7 @@ from typing import (
 )
 
 from api.core.exec import execute_command
+from api.core.sendgird_email import send_email
 from git import Repo
 from pydantic import (
     BaseModel, 
@@ -32,6 +33,7 @@ import os
 import shutil
 import requests
 import logging
+from motor.motor_asyncio import AsyncIOMotorClient
 
 logger = logging.getLogger(__name__)
 
@@ -310,6 +312,7 @@ class RunPipeline(SnakemakePipeline):
     # preserved_directories: Optional[List[str]]
     new_release: bool
     release_notes: str
+    email: str
     
     async def pull(self) -> None:
         """Pulls changes from GitHub Repository.
@@ -326,7 +329,7 @@ class RunPipeline(SnakemakePipeline):
             raise Exception(f"Error validating local paths: {ae}")
 
 
-    async def execute_pipeline (self) -> tuple[int, str, str]:
+    async def execute_pipeline (self) -> None:
         """Run the pipeline.
 
         Runs `snakemake -s` with the additional force run option by making
@@ -343,7 +346,6 @@ class RunPipeline(SnakemakePipeline):
         Raises:
             HTTPException: If there is an error running the pipeline.
         """
-        logger.info("Running pipeline")
         
         if self.force_run:
             force_run = "--forcerun"
@@ -360,12 +362,11 @@ class RunPipeline(SnakemakePipeline):
                 # format output
                 stdout = stdout.replace("\n", " ").replace("\\", " ")
                 stderr = stderr.replace("\n", " ").replace("\\", " ")
-
-                return exit_status, stdout, stderr
             
             except Exception as error:
                 await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Error running pipeline: {error}")
+                await send_email(self.email, self.pipeline_name, "unsuccessful", error)
+                return
         elif not self.pixi_use:
             env_name = self.pipeline_name
             command = f"source activate {env_name} && snakemake -s {self.snakefile_path} --use-conda {force_run} --cores 4"
@@ -377,13 +378,27 @@ class RunPipeline(SnakemakePipeline):
                 # format output
                 stdout = stdout.replace("\n", " ").replace("\\", " ")
                 stderr = stderr.replace("\n", " ").replace("\\", " ")
-
-                return exit_status, stdout, stderr
             
             except Exception as error:
                 await self.delete_conda_env()
                 await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Error running pipeline: {error}")
+                await send_email(self.email, self.pipeline_name, "unsuccessful", error)
+                return
+            
+        if exit_status != 0:
+            if not self.pixi_use:
+                await self.delete_conda_env()
+                await send_email(self.email, self.pipeline_name, "unsuccessful", stderr)
+                return
+
+        # delete conda environment after run
+        if not self.pixi_use:
+            await self.delete_conda_env()
+
+        await send_email(self.email, self.pipeline_name, "successful", f'Standard Output: {stdout}. Standard Error: {stderr}')
+
+        self.last_updated_at = datetime.now(timezone.utc).isoformat()
+        await self.save_run_entry()
             
     async def save_run_entry(self) -> None:
         """Save pipeline run entry into the database.
@@ -394,6 +409,11 @@ class RunPipeline(SnakemakePipeline):
 
         #Get latest commit id
         commit_id = await fetch_latest_commit_id(self.fs_path)
+        #need to re-instantiate database connection within thread to not share across threads
+        database = get_database() #get new database connection within thread
+
+        create_snakemake_pipeline_collection = database["create_snakemake_pipeline"]
+        ran_pipelines_collection = database["run_snakemake_pipeline"]
 
         #Get associated object_id of pipeline from create pipeline collection
         create_pipeline_data = await create_snakemake_pipeline_collection.find_one({"pipeline_name": self.pipeline_name})
@@ -417,6 +437,7 @@ class RunPipeline(SnakemakePipeline):
             "new_release": self.new_release,
             "date": self.last_updated_at,
             "release_notes": self.release_notes,
+            "email": self.email,
             "create_pipeline": create_pipeline_id
         }
         try:
