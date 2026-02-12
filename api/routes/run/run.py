@@ -1,4 +1,4 @@
-from api.models.Pipeline import RunPipeline
+from api.models.Pipeline import RunPipeline, RunPipelineKubernetes
 from fastapi import Depends, HTTPException
 from api.db import get_database
 from datetime import datetime, timezone
@@ -23,28 +23,40 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	
 	logger.info("%s pipeline found in database", pipeline_name)
 	pipeline = {**data, **pipeline_data}
-	pipeline = RunPipeline(**pipeline)
+	if data['kubernetes']:
+		pipeline = RunPipelineKubernetes(**pipeline)
+		logger.info("Kubernetes pipeline run requested")
+	else:
+		pipeline = RunPipeline(**pipeline)
 
 	# pull changes from pipeline repository
 	await pipeline.pull()
 
-	# Create either pixi or conda environment
-	await pipeline.create_pixi_or_conda_env()
+	if pipeline.kubernetes:
+		# Convert pixi environment to conda environment for kubernetes execution
+		await pipeline.convert_pixi_to_conda_env()
 
-	#Dry run pipeline just to see if anything is obviously wrong before actual execution
-	await pipeline.dry_run()
-	logger.info("Pipeline dry-run completed")
+	
+	#Not a kubernetes pipeline, so we can run the snakemake pipeline directly on the host machine
+	if not pipeline.kubernetes:
+		#Create either pixi or conda environment
+		await pipeline.create_pixi_or_conda_env()
+		#Dry run pipeline just to see if anything is obviously wrong before actual execution
+		await pipeline.dry_run()
+		logger.info("Pipeline dry-run completed")
 
-	# run pipeline
-	logger.info("Starting pipeline run")
-	thread = threading.Thread(target= run_pipeline_in_thread, args=(pipeline,))
-	thread.start()
+		#run pipeline
+		logger.info("Starting pipeline run")
+		thread = threading.Thread(target= run_pipeline_in_thread, args=(pipeline,))
+		thread.start()
 
-	return {
-		"success": True,
-		"run_status": f"{pipeline.pipeline_name} Pipeline is running. You will receive an email soon outlining the status of your run. Thank you."
-	}
-
+		return {
+			"success": True,
+			"run_status": f"{pipeline.pipeline_name} Pipeline is running. You will receive an email soon outlining the status of your run. Thank you."
+		}
+	else:
+		# Need to Inject additional depedencies into the conda env for kubernetes execution
+		await pipeline.inject_kubs_dependencies_into_conda_env()
 def run_pipeline_in_thread(pipeline_instance):
     """A synchronous wrapper function to start an asyncio event loop in a new thread."""
     # This function runs entirely within the new thread after thread.start() is called

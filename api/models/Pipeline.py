@@ -15,6 +15,7 @@ from typing import (
 
 from api.core.exec import execute_command
 from api.core.sendgird_email import send_email
+from api.core.inject_deps import inject_deps
 from git import Repo
 from pydantic import (
     BaseModel, 
@@ -313,6 +314,7 @@ class RunPipeline(SnakemakePipeline):
     new_release: bool
     release_notes: str
     email: str
+    kubernetes: bool
     
     async def pull(self) -> None:
         """Pulls changes from GitHub Repository.
@@ -445,6 +447,53 @@ class RunPipeline(SnakemakePipeline):
         except ValueError as error:
             raise HTTPException(status_code=401, detail=str(error))
         
+class RunPipelineKubernetes(RunPipeline):
+
+    _conda_path_kubs: str = None
+    _conda_path_container = None
+
+    async def convert_pixi_to_conda_env(self) -> None:
+        """Convert pixi environment to conda environment.
+
+        Runs `pixi export conda` to create a conda environment file from the pixi environment file.
+
+        Raises:
+            HTTPException: If there is an error creating the conda environment file.
+        """
+        
+        if self.pixi_use:
+            self.pixi_use = False
+            logger.info("Converting Pixi environment to Conda environment for pipeline Kubernetes execution")
+            try:
+                cwd = f"{self.fs_path}"
+                convert_cmd = f"pixi export conda {self.pipeline_name}_k8s_env.yaml"
+                exit_status, stdout, stderr = await execute_command(convert_cmd, cwd)
+
+                if exit_status != 0:
+                    await self.delete_local()
+                    raise HTTPException(status_code=400, detail=f"Error converting pixi environment to conda environment: {stderr}")
+                #update conda_env_file_path to point to new conda env file for kubernetes execution
+                self.conda_env_file_path = f"{self.fs_path}/{self.pipeline_name}_k8s_env.yaml"
+            except Exception as error:
+                await self.delete_local()
+                raise HTTPException(status_code=400, detail=str(error))
+            
+        else:
+            logger.info("Pipeline is already using a conda environment. No need to convert for Kubernetes execution.")
+        
+    async def inject_kubs_dependencies_into_conda_env(self):
+        """Inject additional dependencies into the conda environment for kubernetes execution."""
+        inject_deps(conda_env_file_path = self.fs_path + self.conda_env_file_path)
+        
+
+        
+    
+        
+        
+    
+
+
+
 class Zenodo(BaseModel):
     
     #forbid extra fields in json schema
