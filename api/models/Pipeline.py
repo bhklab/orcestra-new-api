@@ -466,14 +466,14 @@ class RunPipelineKubernetes(RunPipeline):
             logger.info("Converting Pixi environment to Conda environment for pipeline Kubernetes execution")
             try:
                 cwd = f"{self.fs_path}"
-                convert_cmd = f"pixi export conda {self.pipeline_name}_k8s_env.yaml"
+                convert_cmd = f"pixi workspace export conda-environment > {self.pipeline_name}_k8s_env.yaml"
                 exit_status, stdout, stderr = await execute_command(convert_cmd, cwd)
 
                 if exit_status != 0:
                     await self.delete_local()
                     raise HTTPException(status_code=400, detail=f"Error converting pixi environment to conda environment: {stderr}")
                 #update conda_env_file_path to point to new conda env file for kubernetes execution
-                self.conda_env_file_path = f"{self.fs_path}/{self.pipeline_name}_k8s_env.yaml"
+                self.conda_env_file_path = f"{self.pipeline_name}_k8s_env.yaml"
             except Exception as error:
                 await self.delete_local()
                 raise HTTPException(status_code=400, detail=str(error))
@@ -483,7 +483,7 @@ class RunPipelineKubernetes(RunPipeline):
         
     async def inject_kubs_dependencies_into_conda_env(self):
         """Inject additional dependencies into the conda environment for kubernetes execution."""
-        inject_deps(conda_env_file_path = self.fs_path + self.conda_env_file_path)
+        inject_deps(conda_env_file_path = str(self.fs_path) + "/" + str(self.conda_env_file_path))
         
 
         
