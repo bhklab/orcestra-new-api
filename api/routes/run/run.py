@@ -57,11 +57,11 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	else:
 		# Need to Inject additional depedencies into the conda env for kubernetes execution
 		await pipeline.inject_kubs_dependencies_into_conda_env()
-		"""
+		logger.info("Kubernetes dependencies injected into conda environment")
 		await pipeline.create_pixi_or_conda_env()
 		await pipeline.dry_run()
 		logger.info("Pipeline dry-run completed")
-		"""
+
 		return {"success": True}
 def run_pipeline_in_thread(pipeline_instance):
     """A synchronous wrapper function to start an asyncio event loop in a new thread."""

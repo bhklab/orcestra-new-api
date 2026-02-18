@@ -8,7 +8,6 @@ REQUIRED_CHANNELS = ["conda-forge", "bioconda"]
 
 # Install these via conda (bioconda)
 CONDA_INJECT = [
-    "snakemake-minimal",
     "snakemake-interface-common",
     "snakemake-interface-executor-plugins",
     "snakemake-interface-logger-plugins",
