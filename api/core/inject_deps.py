@@ -18,15 +18,15 @@ CONDA_INJECT = [
 
 # Install these via pip (PyPI)
 PIP_INJECT = [
-    "snakemake-executor-plugin-kubernetes",
+    "git+https://github.com/MessereN/snakemake-executor-plugin-kubernetes.git@feature/podtolerationsandselectors",
     "snakemake-storage-plugin-gcs",
 ]
 
 
-def inject_deps(conda_env_file_path: str) -> None:
+def inject_deps(pipeline: SnakemakePipeline) -> str:
     """Injects necessary dependencies into the conda environment for kubernetes execution."""
     # Load existing conda environment YAML
-    with open(conda_env_file_path, 'r') as file:
+    with open(pipeline.fs_path / pipeline.conda_env_file_path, 'r') as file:
         env_data = yaml.safe_load(file)
 
     # Ensure required channels are present
@@ -51,6 +51,10 @@ def inject_deps(conda_env_file_path: str) -> None:
 
     env_data['dependencies'] = dependencies
 
+    kubs_conda_path = f"{pipeline.pipeline_name}_kubs_exec.yaml"
+
     # Save the updated conda environment YAML
-    with open(conda_env_file_path, 'w') as file:
+    with open(str(pipeline.fs_path) + "/" + kubs_conda_path, 'w') as file:
         yaml.dump(env_data, file)
+
+    return kubs_conda_path

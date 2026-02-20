@@ -450,7 +450,7 @@ class RunPipeline(SnakemakePipeline):
 class RunPipelineKubernetes(RunPipeline):
 
     _conda_path_kubs: str = None
-    _conda_path_container = None
+    _conda_path_container: str = None
 
     async def convert_pixi_to_conda_env(self) -> None:
         """Convert pixi environment to conda environment.
@@ -481,16 +481,13 @@ class RunPipelineKubernetes(RunPipeline):
         else:
             logger.info("Pipeline is already using a conda environment. No need to convert for Kubernetes execution.")
         
-    async def inject_kubs_dependencies_into_conda_env(self):
+    async def inject_kubs_dependencies_into_conda_env(self) -> None:
         """Inject additional dependencies into the conda environment for kubernetes execution."""
-        inject_deps(conda_env_file_path = str(self.fs_path) + "/" + str(self.conda_env_file_path))
-        
-
-        
-    
-        
-        
-    
+        self._conda_path_kubs = inject_deps(self)
+        #if a new conda env file was created for kubernetes execution, delete original conda env file from pixi conversion to avoid confusion
+        if self.conda_env_file_path == f"{self.pipeline_name}_k8s_env.yaml":
+            os.remove(self.fs_path / self.conda_env_file_path)
+        self.conda_env_file_path = self._conda_path_kubs
 
 
 
