@@ -500,10 +500,8 @@ class RunPipelineKubernetes(RunPipeline):
             HTTPException: If there is an error running the pipeline on Kubernetes.
         """
         logger.info("Running pipeline on Kubernetes cluster")
-        # Placeholder for Kubernetes execution logic
-        # This could involve using a Kubernetes Python client to create and manage jobs, or it could involve generating and applying Kubernetes manifests, etc.
         env_name = self.pipeline_name
-        command = f"conda run -n {env_name} snakemake -s {self.snakefile_path} --profile /home/nickM/k8s_profile"
+        command = f"conda run -n {env_name} snakemake -s {self.snakefile_path} --profile {Path.home()}/k8s_profile"
         cwd = f"{self.fs_path}"
 
         try:
