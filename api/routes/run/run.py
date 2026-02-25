@@ -59,11 +59,11 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 		await pipeline.inject_kubs_dependencies_into_conda_env()
 		logger.info("Kubernetes dependencies injected into conda environment")
 		await pipeline.create_pixi_or_conda_env()
-		await pipeline.dry_run()
 		logger.info("Pipeline dry-run completed")
-
+		#await pipeline.dry_run()
+		await pipeline.run_kubernetes_pipeline()
 		return {"success": True}
-def run_pipeline_in_thread(pipeline_instance):
+def run_pipeline_in_thread(pipeline_instance: RunPipeline):
     """A synchronous wrapper function to start an asyncio event loop in a new thread."""
     # This function runs entirely within the new thread after thread.start() is called
     loop = asyncio.new_event_loop()

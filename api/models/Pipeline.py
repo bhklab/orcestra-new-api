@@ -15,7 +15,7 @@ from typing import (
 
 from api.core.exec import execute_command
 from api.core.sendgird_email import send_email
-from api.core.inject_deps import inject_deps
+from api.core.inject_deps import inject_deps, remove_snakemake_deps
 from git import Repo
 from pydantic import (
     BaseModel, 
@@ -488,8 +488,51 @@ class RunPipelineKubernetes(RunPipeline):
         if self.conda_env_file_path == f"{self.pipeline_name}_k8s_env.yaml":
             os.remove(self.fs_path / self.conda_env_file_path)
         self.conda_env_file_path = self._conda_path_kubs
+        #remove snakemake depedency from conda env file since it will be installed separately in the kubernetes cluster and can cause version conflicts with snakemake interface plugin dependencies if left in the conda env file for kubernetes execution
+        self._conda_path_container = remove_snakemake_deps(self)
 
+    async def run_kubernetes_pipeline(self) -> None:
+        """Run the pipeline on Kubernetes cluster.
 
+        Run the pipeline on Kubernetes cluster using the injected conda environment file with necessary dependencies for kubernetes execution.
+
+        Raises:
+            HTTPException: If there is an error running the pipeline on Kubernetes.
+        """
+        logger.info("Running pipeline on Kubernetes cluster")
+        # Placeholder for Kubernetes execution logic
+        # This could involve using a Kubernetes Python client to create and manage jobs, or it could involve generating and applying Kubernetes manifests, etc.
+        env_name = self.pipeline_name
+        command = f"conda run -n {env_name} snakemake -s {self.snakefile_path} --profile /home/nickM/k8s_profile"
+        cwd = f"{self.fs_path}"
+
+        try:
+            exit_status, stdout, stderr = await execute_command(command, cwd)
+
+            # format output
+            stdout = stdout.replace("\n", " ").replace("\\", " ")
+            stderr = stderr.replace("\n", " ").replace("\\", " ")
+            logger.info(f"Kubernetes execution stderr: {stderr}")
+        
+        except Exception as error:
+            await self.delete_conda_env()
+            await self.delete_local()
+            await send_email(self.email, self.pipeline_name, "unsuccessful", error)
+            return
+        try:
+            logger.info(f"Kubernetes execution succeeded with stdout: {stdout} and stderr: {stderr}")
+            await send_email(self.email, self.pipeline_name, "successful", f'Standard Output: {stdout}. Standard Error: {stderr}')
+            logger.info(f"Email sent for Kubernetes execution completion to {self.email}. Now deleting conda envs and extra environments for cloud execution.")
+            await self.delete_conda_env()
+            if self._conda_path_kubs and os.path.exists(self.fs_path / self._conda_path_kubs):
+                os.remove(self.fs_path / self._conda_path_kubs)
+            if self._conda_path_container and os.path.exists(self.fs_path / self._conda_path_container):
+                os.remove(self.fs_path / self._conda_path_container)
+            return
+        except Exception as error:
+            await self.delete_conda_env()
+            await self.delete_local()
+            raise HTTPException(status_code=400, detail=f"Error sending email after Kubernetes execution: {error}")
 
 class Zenodo(BaseModel):
     
