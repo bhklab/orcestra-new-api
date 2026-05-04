@@ -32,10 +32,6 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 	# pull changes from pipeline repository
 	await pipeline.pull()
 
-	if pipeline.kubernetes:
-		# Convert pixi environment to conda environment for kubernetes execution
-		await pipeline.convert_pixi_to_conda_env()
-
 	
 	#Not a kubernetes pipeline, so we can run the snakemake pipeline directly on the host machine
 	if not pipeline.kubernetes:
@@ -55,10 +51,9 @@ async def run_pipeline(data: RunPipeline) -> RunPipeline:
 			"run_status": f"{pipeline.pipeline_name} Pipeline is running. You will receive an email soon outlining the status of your run. Thank you."
 		}
 	else:
-		# Need to Inject additional depedencies into the conda env for kubernetes execution
-		await pipeline.inject_kubs_dependencies_into_conda_env()
+		# Need to Inject additional depedencies into the conda/pixi env for kubernetes execution
+		await pipeline.inject_kubs_dependencies()
 		logger.info("Kubernetes dependencies injected into conda environment")
-		await pipeline.create_pixi_or_conda_env()
 		await pipeline.dry_run()
 		logger.info("Pipeline dry-run completed")
 		await pipeline.run_kubernetes_pipeline()
