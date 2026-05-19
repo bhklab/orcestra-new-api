@@ -10,7 +10,8 @@ from typing import (
     Dict, 
     Any,
     Tuple,
-    Union
+    Union,
+    Literal
 )
 
 from api.core.exec import execute_command
@@ -22,7 +23,7 @@ from pydantic import (
     ConfigDict,
     Field,
     model_validator,
-    PrivateAttr
+    PrivateAttr,
 )
 
 from api.core.git import validate_github_repo, clone_github_repo, pull_latest_pipeline, fetch_latest_commit_id
@@ -46,6 +47,7 @@ zenodo_sandbox_collection = database["zenodo_sandbox"]
 class SnakemakePipeline(BaseModel):
     git_url: str
     pipeline_name: str
+    """
     output_files: List[str]
     snakefile_path: str = Field(
         default="Snakefile",
@@ -59,208 +61,18 @@ class SnakemakePipeline(BaseModel):
     created_at: Optional[str] = datetime.now(timezone.utc).isoformat()
     last_updated_at: Optional[str] = datetime.now(timezone.utc).isoformat()
     pixi_use: bool
-
-    @property
-    def fs_path(self) -> Path:
-        """Returns the path for the pipeline's directory.
-        """
-        return Path.home() / "pipelines" / self.pipeline_name	
-    
-    async def delete_local(self) -> None:
-        """Delete cloned repository if an error is encountered.
-           
-           This ensures there are no unused repositories.
-        """
-
-        rmtree(self.fs_path)
-    
-    async def validate_local_file_paths(self) -> bool:
-        """Validate provided file paths exist in cloned repository.
-
-        When creating, user enters snakefile, config and conda env file paths.
-
-        Returns:
-            bool: True if all paths exist
-
-        Raises:
-            AssertionError: If any of the paths do not exist.
-        """
-        logger.info("Validating repository paths")
-        if self.pixi_use:
-            if not self.fs_path.exists():
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Path: '{self.fs_path}' does not exist.")
-            if not (self.fs_path / self.snakefile_path).exists():
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Snakefile: '{self.snakefile_path}' does not exist.")
-            if not (self.fs_path / "pixi.toml").exists():
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"pixi config: '{self.snakefile_path}' does not exist despite indicating this pipeline will be using pixi")
-
-        else:
-            if not self.fs_path.exists():
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Path: '{self.fs_path}' does not exist.")
-            if not (self.fs_path / self.snakefile_path).exists():
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Snakefile: '{self.snakefile_path}' does not exist.")
-            if not (self.fs_path / self.config_file_path).exists():
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Config file: '{self.config_file_path}' does not exist.")
-            if not (self.fs_path / self.conda_env_file_path).exists():
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Conda configuration file: '{self.conda_env_file_path}' does not exist.")
-        
-        return True
-    
-    async def create_conda_env(self) -> None:
-        """Create conda environment.
-
-        Runs `conda env create -f {env_file_path} -n {env_name}` and
-        makes use of the `execute_command` function from `core.exec`
-
-        Raises:
-            HTTPException: If there is an error creating the conda environment.
-        """
-        logger.info("Creating conda environment for pipeline")  
-        try:
-            env_file_path = self.conda_env_file_path
-            env_name = self.pipeline_name
-            cwd = f"{self.fs_path}"
-            create_cmd = f"conda env create -f {env_file_path} -n {env_name}"
-            exit_status, stdout, stderr = await execute_command(create_cmd, cwd)
-
-            if exit_status != 0:
-                await self.delete_conda_env()
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Error creating conda environment: {stderr}")
-        except Exception as error:
-            await self.delete_conda_env()
-            await self.delete_local()
-            raise HTTPException(status_code=400, detail=str(error))
-        
-    async def create_pixi_env(self) -> None:
-        """Create Pixi environment.
-
-        Runs `pixi install` to install all the needed packages to run the pipeline
-
-        Raises:
-            HTTPException: If there is an error creating the Pixi environment.
-        """
-        logger.info("Creating Pixi environment for pipeline")
-
-        try:
-            cwd = f"{self.fs_path}"
-            create_cmd = f"pixi install"
-            exit_status, stdout, stderr = await execute_command(create_cmd, cwd)
-
-            if exit_status != 0:
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Error creating pixi environment: {stderr}")
-        except Exception as error:
-            await self.delete_local()
-            raise HTTPException(status_code=400, detail=str(error))
-        
-    async def dry_run(self) -> tuple[int, str, str]:
-        """Dry run the pipeline.
-
-        Should be able to run `snakemake -n`
-        make use of the `execute_command` function from `core.exec`
-
-        Notes:
-        - the prod environment has snakemake & conda installed already
-        - we expect the curator to have the conda env file if needed
-        - If a pixi env is being used utilize pixi environment workflow
-        - If conda env is being used utilize conda environment workflow
-
-        Returns: 
-            Str: The output of the dry run
-
-        Raises:
-            HTTPException: If there is an error performing the dry run.
-        """
-        logger.info("Starting dry run for pipeline")
-        if self.pixi_use:
-            command = f"pixi run snakemake -s {self.snakefile_path} -n"
-            cwd = f"{self.fs_path}"
-            try:
-                exit_status, stdout, stderr = await execute_command(command, cwd)
-
-                # format output
-                stdout = stdout.replace("\n", " ").replace("\\", " ")
-                stderr = stderr.replace("\n", " ").replace("\\", " ")
-
-                return exit_status, stdout, stderr
-
-            except Exception as error:
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}")  
-
-        elif not self.pixi_use:
-            env_name = self.pipeline_name
-            command = f"source activate {env_name} && snakemake -s {self.snakefile_path} -n --use-conda"
-            cwd = f"{self.fs_path}"
-            try:
-                exit_status, stdout, stderr = await execute_command(command, cwd)
-
-                # format output
-                stdout = stdout.replace("\n", " ").replace("\\", " ")
-                stderr = stderr.replace("\n", " ").replace("\\", " ")
-
-                return exit_status, stdout, stderr
-            except Exception as error:
-                await self.delete_local()
-                await self.delete_conda_env()
-                raise HTTPException(status_code=400, detail=f"Error performing dry run: {error}") 
-    
-    async def create_pixi_or_conda_env(self) -> None:
-        """
-        Create either pixi or conda environment based on pixi flag.
-        """
-
-        if self.pixi_use:
-            await self.create_pixi_env()
-        elif not self.pixi_use:
-            await self.create_conda_env()
-
-    async def delete_conda_env(self) -> None:
-        """Delete conda environment.
-
-        Raises:
-            HTTPException: If conda environment does not exist.
-        """
-
-        try:
-            print(Path.cwd())
-            env_path = f"{Path.cwd()}/.pixi/envs/default/envs/{self.pipeline_name}"
-            if os.path.exists(env_path):
-                shutil.rmtree(env_path)
-            else:
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Environment {self.pipeline_name} does not exist at {env_path}")
-        except Exception as error:
-            await self.delete_local()
-            raise HTTPException(status_code=400, detail=str(error))      
-
+    """
+class JenkinsStageEvent(BaseModel):
+    run_id: str = Field(..., min_length=1)
+    pipeline_name: str = Field(..., min_length=1)
+    stage: str = Field(..., min_length=1)
+    status: Literal["queued", "running", "succeeded", "failed", "aborted"]
+    message: Optional[str] = None
+    jenkins_build_url: Optional[str] = None
 
 class CreatePipeline(SnakemakePipeline):
 
-    model_config: ConfigDict = {
-        "json_schema_extra": {
-            "example": {
-                "pipeline_name": "snakemake_bioconductor",
-                "git_url": "https://github.com/jjjermiah/5_snakemake_bioconductor.git",
-                "output_file": "",
-                "output_files": ["results/output.txt"],
-                "snakefile_path": "workflow/Snakefile",
-                "config_file_path": "workflow/config/config.yaml",
-                "conda_env_file_path": "workflow/envs/pipeline_env.yaml",
-                "pixi_use": False
-            },
-        }
-    }
     @property
-    
     async def validate_url(self) -> bool:
         """Confirm pipeline's Git URL is a valid repository.
 
