@@ -16,6 +16,8 @@ async def create_pipeline(data: CreatePipeline) -> CreatePipeline:
         logger.info("Pipeline creation process started for: %s", pipeline.pipeline_name)
         if await pipeline.git_url_exists(create_snakemake_pipeline_collection):
             raise HTTPException(status_code=400, detail="Git url already exists in database")
+        if await pipeline.pipeline_name_exists(create_snakemake_pipeline_collection):
+            raise HTTPException(status_code=400, detail="Pipeline name already exists in database")
 
     except KeyError as error:
         raise HTTPException(status_code=400, detail=f"Missing required field: {error}")

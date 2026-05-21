@@ -95,6 +95,20 @@ class CreatePipeline(SnakemakePipeline):
             logger.info("Git URL already exists in database")
             return True
         return False
+
+    async def pipeline_name_exists(self, collection: AsyncIOMotorCollection) -> bool:
+        """
+            Verify pipeline name is not already in database.
+
+            Returns:
+                bool: True if pipeline name does exist and False otherwise
+        """
+        logger.info("Checking if pipeline name already exists in database")
+        name = await collection.find_one({"pipeline_name": self.pipeline_name})
+        if name is not None:
+            logger.info("Pipeline name already exists in database")
+            return True
+        return False
     
 
     async def clone(self):
@@ -119,14 +133,24 @@ class CreatePipeline(SnakemakePipeline):
             await self.delete_local()
             raise HTTPException(status_code=401, detail=str(error))
 
-class RunPipeline(SnakemakePipeline):
+class RunPipeline(BaseModel):
+    pipeline_name: str
+    commit_id: Optional[str] = ""
+    branch: Optional[str] = ""
+    email: str = ""
+    output_directories: List[str]
+    snakefile_path: Optional[str] = Field(
+        default="Snakefile",
+    )
+    config_file_path: Optional[str] = Field(
+        default="config/config.yaml",
+    )
+    conda_env_file_path: Optional[str] = Field(
+        default="pipeline_env.yaml",
+    )
+    pixi_use: bool = False
+    large_machine_use: bool = False
 
-    force_run: bool
-    # preserved_directories: Optional[List[str]]
-    new_release: bool
-    release_notes: str
-    email: str
-    kubernetes: bool
     
     async def pull(self) -> None:
         """Pulls changes from GitHub Repository.
@@ -142,7 +166,19 @@ class RunPipeline(SnakemakePipeline):
             await self.delete_local()
             raise Exception(f"Error validating local paths: {ae}")
 
+    async def determine_run_id(self) -> str:
+        """Determine run id for pipeline run.
 
+        Run id is determined by concatenating pipeline name with current timestamp.
+
+        Returns:
+            str: run id for pipeline run.
+        """
+        run_id = 1
+        most_recent_run = await ran_pipelines_collection.find_one({"pipeline_name": self.pipeline_name}, sort = [("created_at", -1)])
+        if most_recent_run:
+            run_id = int(most_recent_run["run_id"]) + 1
+        return run_id
     async def execute_pipeline (self) -> None:
         """Run the pipeline.
 
@@ -259,80 +295,11 @@ class RunPipeline(SnakemakePipeline):
         except ValueError as error:
             raise HTTPException(status_code=401, detail=str(error))
         
-class RunPipelineKubernetes(RunPipeline):
-
-    async def inject_kubs_dependencies(self) -> None:
-        """Inject additional dependencies into the pixi/conda environment for kubernetes execution."""
-        if self.pixi_use:
-            logger.info("Injecting dependencies for kubernetes execution into pixi environment")
-            try:
-                await inject_deps_pixi(self)
-            except Exception as error:
-                logger.error(f"Error injecting dependencies for kubernetes execution: {error}")
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Error injecting dependencies for kubernetes execution: {error}")
-        else:
-            try:
-                await inject_deps_conda(self)
-            except Exception as error:
-                logger.error(f"Error injecting dependencies for kubernetes execution: {error}")
-                await self.delete_local()
-                raise HTTPException(status_code=400, detail=f"Error injecting dependencies for kubernetes execution: {error}")
-        logger.info("Kubernetes dependencies injected successfully")
-
-    async def run_kubernetes_pipeline(self) -> None:
-        """Run the pipeline on Kubernetes cluster.
-
-        Run the pipeline on Kubernetes cluster using the injected conda environment file with necessary dependencies for kubernetes execution.
-
-        Raises:
-            HTTPException: If there is an error running the pipeline on Kubernetes.
-        """
-        if self.pixi_use:
-            logger.info("Running pipeline on Kubernetes cluster using pixi environment")
-            command = f"pixi run snakemake -s {self.snakefile_path} --profile {Path.home()}/k8s_profile"
-        else:
-            logger.info("Running pipeline on Kubernetes cluster using conda environment")
-            env_name = self.pipeline_name
-            command = f"conda run -n {env_name} snakemake -s {self.snakefile_path} --profile {Path.home()}/k8s_profile"
-        cwd = f"{self.fs_path}"
-
-        try:
-            exit_status, stdout, stderr = await execute_command(command, cwd)
-
-            # format output
-            stdout = stdout.replace("\n", " ").replace("\\", " ")
-            stderr = stderr.replace("\n", " ").replace("\\", " ")
-            logger.info(f"Kubernetes execution stderr: {stderr}")
-        
-        except Exception as error:
-            if not self.pixi_use:
-                await self.delete_conda_env()
-            await self.delete_local()
-            logger.error(f"Error running {self.pipeline_name} pipeline on Kubernetes: {error}")
-            await send_email(self.email, self.pipeline_name, "unsuccessful", error)
-            return
-        try:
-            logger.info(f"Kubernetes execution succeeded with stdout: {stdout} and stderr: {stderr}")
-            await send_email(self.email, self.pipeline_name, "successful", f'Standard Output: {stdout}. Standard Error: {stderr}')
-            logger.info(f"Email sent for {self.pipeline_name} Kubernetes execution completion to {self.email}. Now deleting conda envs and extra environments for cloud execution.")
-            await self.delete_conda_env()
-            if self._conda_path_kubs and os.path.exists(self.fs_path / self._conda_path_kubs):
-                os.remove(self.fs_path / self._conda_path_kubs)
-            if self._conda_path_container and os.path.exists(self.fs_path / self._conda_path_container):
-                os.remove(self.fs_path / self._conda_path_container)
-            return
-        except Exception as error:
-            if not self.pixi_use:
-                await self.delete_conda_env()
-            await self.delete_local()
-            raise HTTPException(status_code=400, detail=f"Error sending email after successful Kubernetes execution: {error}")
 
 class Zenodo(BaseModel):
     
     #forbid extra fields in json schema
     model_config = ConfigDict(extra='forbid')
-
     #Enforced fields for json schema
     pipeline_name: str = Field(json_schema_extra = {"not_metadata": True})
     access_right: str = Field(default = "open")
