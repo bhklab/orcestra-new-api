@@ -150,7 +150,9 @@ class RunPipeline(BaseModel):
     )
     pixi_use: bool = False
     large_machine_use: bool = False
-
+    pipeline_run_command: Optional[str] = ""
+    qc_command: Optional[str] = ""
+    qc_output_directory: Optional[str] = "" 
     
     async def pull(self) -> None:
         """Pulls changes from GitHub Repository.
@@ -178,7 +180,7 @@ class RunPipeline(BaseModel):
         most_recent_run = await ran_pipelines_collection.find_one({"pipeline_name": self.pipeline_name}, sort = [("created_at", -1)])
         if most_recent_run:
             run_id = int(most_recent_run["run_id"]) + 1
-        return run_id
+        return str(run_id)
     async def execute_pipeline (self) -> None:
         """Run the pipeline.
 

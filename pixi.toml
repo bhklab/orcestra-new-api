@@ -21,6 +21,7 @@ snakemake = ">=9.16.3,<10"
 email-validator = ">=2.3.0,<3"
 colorlog = ">=6.10.1,<7"
 sendgrid = ">=6.12.5,<7"
+httpx = ">=0.28.1,<0.29"
 
 [tasks]
 start = "uvicorn api.main:app --reload --reload-dir api"
