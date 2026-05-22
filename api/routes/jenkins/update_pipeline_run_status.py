@@ -7,6 +7,7 @@ import threading
 import asyncio
 import os
 from typing import Dict
+from api.core.sendgird_email import send_email
 
 logger = logging.getLogger(__name__)
 database = get_database()
@@ -43,6 +44,14 @@ async def update_pipeline_run_status(data: JenkinsStageEvent) -> Dict:
     )
     logger.info("Updated pipeline run status in database: %s", result.raw_result)
 
+    if data.status.lower() in ["failed", "aborted", "succeded"] and data.email:
+        logger.info(f"Sending email notification for pipeline {data.pipeline_name} run status update. Status: {data.status} to {data.email}")
+        await send_email(
+            to_email=data.email,
+            pipeline_name=data.pipeline_name,
+            run_status=data.status,
+            error_output=f"Run ID: {data.run_id} - {data.message}",
+        )
     return {
         "ok": True,
         "run_id": data.run_id,

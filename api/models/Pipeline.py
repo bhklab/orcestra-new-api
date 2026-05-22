@@ -4,6 +4,7 @@ from copy import deepcopy
 from pathlib import Path
 from shutil import rmtree
 import json
+import httpx
 from typing import (
     List,
     Optional,
@@ -43,6 +44,8 @@ database = get_database()
 create_snakemake_pipeline_collection = database["create_snakemake_pipeline"]
 ran_pipelines_collection = database["run_snakemake_pipeline"]
 zenodo_sandbox_collection = database["zenodo_sandbox"]
+JENKINS_USERNAME = os.environ["JENKINS_USERNAME"]
+JENKINS_API_TOKEN = os.environ["JENKINS_API_TOKEN"]
 
 class SnakemakePipeline(BaseModel):
     git_url: str
@@ -69,6 +72,7 @@ class JenkinsStageEvent(BaseModel):
     status: Literal["queued", "running", "succeeded", "failed", "aborted"]
     message: Optional[str] = None
     jenkins_build_url: Optional[str] = None
+    email: Optional[str] = None
 
 class CreatePipeline(SnakemakePipeline):
 
@@ -154,19 +158,12 @@ class RunPipeline(BaseModel):
     qc_command: Optional[str] = ""
     qc_output_directory: Optional[str] = "" 
     
-    async def pull(self) -> None:
-        """Pulls changes from GitHub Repository.
+    @staticmethod
+    def model_to_dict(model: BaseModel) -> dict:
+        if hasattr(model, "model_dump"):
+            return model.model_dump(exclude_unset=True)
 
-           Calls `pull_latest_pipeline` function from `core.git`.
-        """
-        repo = await pull_latest_pipeline(self.fs_path)
-        _commit_history = repo.iter_commits()  # unused for now
-
-        try:
-            await self.validate_local_file_paths()
-        except AssertionError as ae:
-            await self.delete_local()
-            raise Exception(f"Error validating local paths: {ae}")
+        return model.dict(exclude_unset=True)
 
     async def determine_run_id(self) -> str:
         """Determine run id for pipeline run.
@@ -181,121 +178,74 @@ class RunPipeline(BaseModel):
         if most_recent_run:
             run_id = int(most_recent_run["run_id"]) + 1
         return str(run_id)
-    async def execute_pipeline (self) -> None:
-        """Run the pipeline.
 
-        Runs `snakemake -s` with the additional force run option by making
-        use of the `execute_command` function from `core.exec`
-
-        Notes:
-        - the prod environment has snakemake & conda installed already
-        - If a pixi env is being used utilize pixi environment workflow
-        - If conda env is being used utilize conda environment workflow
-
-        Returns: 
-            Str: The output of the execution
-
-        Raises:
-            HTTPException: If there is an error running the pipeline.
+    async def trigger_jenkins_pipeline_pixi(self, run_id: str, repo_url: str) -> None:
         """
-        
-        if self.force_run:
-            force_run = "--forcerun"
-        else:
-            force_run = ""
-
-        if self.pixi_use:
-            command = f"pixi run snakemake -s {self.snakefile_path} {force_run} --cores 4"
-            cwd = f"{self.fs_path}"
-
-            try:
-                exit_status, stdout, stderr = await execute_command(command, cwd)
-
-                # format output
-                stdout = stdout.replace("\n", " ").replace("\\", " ")
-                stderr = stderr.replace("\n", " ").replace("\\", " ")
-            
-            except Exception as error:
-                await self.delete_local()
-                await send_email(self.email, self.pipeline_name, "unsuccessful", error)
-                return
-        elif not self.pixi_use:
-            env_name = self.pipeline_name
-            command = f"source activate {env_name} && snakemake -s {self.snakefile_path} --use-conda {force_run} --cores 4"
-            cwd = f"{self.fs_path}"
-
-            try:
-                exit_status, stdout, stderr = await execute_command(command, cwd)
-
-                # format output
-                stdout = stdout.replace("\n", " ").replace("\\", " ")
-                stderr = stderr.replace("\n", " ").replace("\\", " ")
-            
-            except Exception as error:
-                await self.delete_conda_env()
-                await self.delete_local()
-                await send_email(self.email, self.pipeline_name, "unsuccessful", error)
-                return
-            
-        if exit_status != 0:
-            if not self.pixi_use:
-                await self.delete_conda_env()
-                await send_email(self.email, self.pipeline_name, "unsuccessful", stderr)
-                return
-
-        # delete conda environment after run
-        if not self.pixi_use:
-            await self.delete_conda_env()
-
-        await send_email(self.email, self.pipeline_name, "successful", f'Standard Output: {stdout}. Standard Error: {stderr}')
-
-        self.last_updated_at = datetime.now(timezone.utc).isoformat()
-        await self.save_run_entry()
-            
-    async def save_run_entry(self) -> None:
-        """Save pipeline run entry into the database.
-
-        Raises:
-            HTTPException: If there is an error adding entry to db.
+        Trigger the Jenkins parameterized job using Basic Auth and
+        application/x-www-form-urlencoded body.
         """
 
-        #Get latest commit id
-        commit_id = await fetch_latest_commit_id(self.fs_path)
-        #need to re-instantiate database connection within thread to not share across threads
-        database = get_database() #get new database connection within thread
-
-        create_snakemake_pipeline_collection = database["create_snakemake_pipeline"]
-        ran_pipelines_collection = database["run_snakemake_pipeline"]
-
-        #Get associated object_id of pipeline from create pipeline collection
-        create_pipeline_data = await create_snakemake_pipeline_collection.find_one({"pipeline_name": self.pipeline_name})
-        create_pipeline_id = create_pipeline_data["_id"]
-
-        #Retrieve most recent run to determine versioning
-        most_recent_run = await ran_pipelines_collection.find_one({"create_pipeline": create_pipeline_id}, sort = [("date", -1)])
-
-        #Determine version number
-        if not most_recent_run:
-            version = 1.0
-        elif self.new_release:
-            version = round(float(int(most_recent_run["version"]) + 1), 1)
+        if self.large_machine_use:
+            endpoint = os.getenv("JENKINS_PIXI_RUN_PIPELINE_LARGE_MACHINE")
         else:
-            version = round(float(most_recent_run["version"]) + 0.1, 1)
-        logger.info("Adding pipeline run entry to database")
-        run_entry = {
-            "run_name": f'{self.pipeline_name}_v{version}',
-            "commit_id": commit_id,
-            "version": version,
-            "new_release": self.new_release,
-            "date": self.last_updated_at,
-            "release_notes": self.release_notes,
-            "email": self.email,
-            "create_pipeline": create_pipeline_id
+            endpoint = "PLACEHOLDER FOR SMALLER MACHINE"
+
+        form_data = {
+            "PIPELINE_NAME": self.pipeline_name,
+            "RUN_ID": run_id,
+            "REPO_URL": repo_url,
+
+            "COMMIT_ID": self.commit_id or "",
+            "BRANCH": self.branch or "",
+            "EMAIL": self.email or "",
+
+            "OUTPUT_DIRECTORIES_JSON": json.dumps(self.output_directories or []),
+
+            "SNAKEFILE_PATH": self.snakefile_path or "Snakefile",
+            "CONFIG_FILE_PATH": self.config_file_path or "config/config.yaml",
+
+            "PIPELINE_RUN_COMMAND": self.pipeline_run_command or "",
+            "QC_COMMAND": self.qc_command or "",
+            "QC_OUTPUT_DIRECTORY": self.qc_output_directory or "",
         }
-        try:
-            await ran_pipelines_collection.insert_one(run_entry)
-        except ValueError as error:
-            raise HTTPException(status_code=401, detail=str(error))
+        
+
+        logger.info("Triggering Jenkins job: %s", endpoint)
+        logger.info("Jenkins form params: %s", {k: v for k, v in form_data.items() if k != "JENKINS_API_TOKEN"})
+
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+            response = await client.post(
+                endpoint,
+                data=form_data,
+                auth=(JENKINS_USERNAME, JENKINS_API_TOKEN),
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+            )
+
+        if response.status_code not in {200, 201, 202, 302}:
+            logger.error(
+                "Failed to trigger Jenkins job. status=%s body=%s",
+                response.status_code,
+                response.text,
+            )
+
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "message": "Failed to trigger Jenkins job",
+                    "jenkins_status_code": response.status_code,
+                    "jenkins_response": response.text,
+                    "jenkins_endpoint": endpoint,
+                },
+            )
+
+        return {
+            "jenkins_status_code": response.status_code,
+            "jenkins_queue_url": response.headers.get("Location"),
+            "jenkins_job_url": endpoint,
+        }
+
         
 
 class Zenodo(BaseModel):

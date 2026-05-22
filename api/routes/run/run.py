@@ -44,7 +44,7 @@ async def run_pipeline(data: RunPipeline) -> dict:
                 ),
             )
 
-        repo_url = pipeline_data.get("repo_url")
+        repo_url = pipeline_data.get("git_url")
 
         if not repo_url:
             raise HTTPException(
@@ -55,7 +55,7 @@ async def run_pipeline(data: RunPipeline) -> dict:
                 ),
             )
 
-        request_data = model_to_dict(data)
+        request_data = RunPipeline.model_to_dict(data)
 
         # Remove fields that are stored in Mongo but are not part of RunPipeline.
         pipeline_data_for_model = dict(pipeline_data)
@@ -77,36 +77,35 @@ async def run_pipeline(data: RunPipeline) -> dict:
             if not pipeline.pipeline_run_command or pipeline.pipeline_run_command.strip() == "":
                 pipeline.pipeline_run_command = "pixi run snakemake --cores 4"
 
-        now = utc_now()
+            now = datetime.now(timezone.utc)
 
-        queued_record = {
-            "run_id": run_id,
-            "pipeline_name": pipeline.pipeline_name,
-            "status": "queued",
-            "current_stage": "Queued",
-            "message": "Pipeline submitted to Jenkins queue",
+            queued_record = {
+                "run_id": run_id,
+                "pipeline_name": pipeline.pipeline_name,
+                "status": "queued",
+                "current_stage": "Queued",
+                "message": "Pipeline submitted to Jenkins queue",
 
-            "jenkins_build_url": None,
-            "jenkins_queue_url": None,
+                "jenkins_build_url": None,
+                "jenkins_queue_url": None,
 
-            "repo_url": repo_url,
-            "commit_id": pipeline.commit_id,
-            "branch": pipeline.branch,
-            "email": pipeline.email,
+                "repo_url": repo_url,
+                "commit_id": pipeline.commit_id,
+                "branch": pipeline.branch,
+                "email": pipeline.email,
 
-            "output_directories": pipeline.output_directories,
-            "snakefile_path": pipeline.snakefile_path,
-            "config_file_path": pipeline.config_file_path,
-            "conda_env_file_path": pipeline.conda_env_file_path,
+                "output_directories": pipeline.output_directories,
+                "snakefile_path": pipeline.snakefile_path,
+                "config_file_path": pipeline.config_file_path,
 
-            "pixi_use": pipeline.pixi_use,
-            "large_machine_use": pipeline.large_machine_use,
-            "pipeline_run_command": pipeline.pipeline_run_command,
-            "qc_command": pipeline.qc_command,
-            "qc_output_directory": pipeline.qc_output_directory,
+                "pixi_use": pipeline.pixi_use,
+                "large_machine_use": pipeline.large_machine_use,
+                "pipeline_run_command": pipeline.pipeline_run_command,
+                "qc_command": pipeline.qc_command,
+                "qc_output_directory": pipeline.qc_output_directory,
 
-            "updated_at": now,
-        }
+                "updated_at": now,
+            }
 
         await ran_pipelines_collection.update_one(
             {
@@ -123,8 +122,7 @@ async def run_pipeline(data: RunPipeline) -> dict:
         )
 
         try:
-            jenkins_result = await trigger_jenkins_pipeline(
-                pipeline=pipeline,
+            jenkins_result = await pipeline.trigger_jenkins_pipeline_pixi(
                 run_id=run_id,
                 repo_url=repo_url,
             )
@@ -140,7 +138,7 @@ async def run_pipeline(data: RunPipeline) -> dict:
                         "status": "failed",
                         "current_stage": "Jenkins Submission",
                         "message": f"Failed to submit pipeline to Jenkins: {str(error)}",
-                        "updated_at": utc_now(),
+                        "updated_at": datetime.now(timezone.utc),
                     }
                 },
             )
@@ -156,13 +154,13 @@ async def run_pipeline(data: RunPipeline) -> dict:
                 "$set": {
                     "jenkins_queue_url": jenkins_result.get("jenkins_queue_url"),
                     "message": "Pipeline queued in Jenkins",
-                    "updated_at": utc_now(),
+                    "updated_at": datetime.now(timezone.utc),
                 }
             },
         )
 
         return {
-            **pipeline.model_dump() if hasattr(pipeline, "model_dump") else pipeline.dict(),
+            **(pipeline.model_dump() if hasattr(pipeline, "model_dump") else pipeline.dict()),
             "run_id": run_id,
             "repo_url": repo_url,
             "status": "queued",

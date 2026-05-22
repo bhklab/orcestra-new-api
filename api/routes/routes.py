@@ -28,7 +28,7 @@ async def create_pipeline_endpoint(data: CreatePipeline):
         raise HTTPException(status_code=400, detail="Validation error: " + str(e.errors()))
     
 @router.post('/run-pipeline', response_model=Dict)
-async def run_pipeline_endpoint(data: Dict):
+async def run_pipeline_endpoint(data: RunPipeline):
     try:
         return await run_pipeline(data)
     except ValidationError as e:
