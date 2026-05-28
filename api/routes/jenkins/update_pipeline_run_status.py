@@ -44,7 +44,7 @@ async def update_pipeline_run_status(data: JenkinsStageEvent) -> Dict:
     )
     logger.info("Updated pipeline run status in database: %s", result.raw_result)
 
-    if data.status.lower() in ["failed", "aborted", "succeded"] and data.email:
+    if data.status.lower() in ["failed", "aborted", "succeeded"] and data.email:
         logger.info(f"Sending email notification for pipeline {data.pipeline_name} run status update. Status: {data.status} to {data.email}")
         await send_email(
             to_email=data.email,

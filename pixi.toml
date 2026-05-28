@@ -25,3 +25,4 @@ httpx = ">=0.28.1,<0.29"
 
 [tasks]
 start = "uvicorn api.main:app --reload --reload-dir api"
+api-testing = "uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir api"
