@@ -16,8 +16,7 @@ async def run_pipeline(data: RunPipeline) -> dict:
         pipeline_name = data.pipeline_name
 
         pipeline_data = await create_snakemake_pipeline_collection.find_one(
-            {"pipeline_name": pipeline_name},
-            {"_id": 0},
+            {"pipeline_name": pipeline_name}
         )
 
         if pipeline_data is None:
@@ -60,6 +59,7 @@ async def run_pipeline(data: RunPipeline) -> dict:
         # Remove fields that are stored in Mongo but are not part of RunPipeline.
         pipeline_data_for_model = dict(pipeline_data)
         pipeline_data_for_model.pop("repo_url", None)
+        create_pipeline_id = pipeline_data_for_model.pop("_id", None)
 
         # Request values override stored values.
         pipeline_dict = {
@@ -71,7 +71,7 @@ async def run_pipeline(data: RunPipeline) -> dict:
 
         logger.info("Pipeline run process started for: %s", pipeline.pipeline_name)
 
-        run_id = await pipeline.determine_run_id()
+        run_id, version = await pipeline.determine_run_version_id()
 
         if pipeline.pixi_use:
             if not pipeline.pipeline_run_command or pipeline.pipeline_run_command.strip() == "":
@@ -81,6 +81,8 @@ async def run_pipeline(data: RunPipeline) -> dict:
 
             queued_record = {
                 "run_id": run_id,
+                "version": version,
+                "create_pipeline": create_pipeline_id,
                 "pipeline_name": pipeline.pipeline_name,
                 "status": "queued",
                 "current_stage": "Queued",
@@ -162,6 +164,7 @@ async def run_pipeline(data: RunPipeline) -> dict:
         return {
             **(pipeline.model_dump() if hasattr(pipeline, "model_dump") else pipeline.dict()),
             "run_id": run_id,
+            "version": version,
             "repo_url": repo_url,
             "status": "queued",
             **jenkins_result,
