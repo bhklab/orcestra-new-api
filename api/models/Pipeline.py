@@ -648,12 +648,8 @@ class Zenodo(BaseModel):
             logger.info("Creating new Zenodo sandbox entry")
             record = self._create_new_zenodo_entry(payload)
             record_id = record["id"]
-            doi = record.get("pids", {}).get("doi")
-            print(record)
-            if not doi:
-                doi = None
-            if isinstance(doi, dict):
-                doi = doi.get("identifier")
+            doi = record.get("doi", "")
+
 
         #Upload files to zenodo sandbox only if new entry or new version
         if not operation or not update_existing:
