@@ -180,9 +180,9 @@ class RunPipeline(BaseModel):
         version = 1
         if most_recent_successful_run:
             if self.new_release:
-                version = int(int(most_recent_successful_run["version"]) + 1)
+                version = round(int(int(most_recent_successful_run["version"]) + 1), 1)
             else:
-                version = float(float(most_recent_successful_run["version"]) + 0.1)
+                version = round(float(float(most_recent_successful_run["version"]) + 0.1), 1)
 
         return str(run_id), str(version)
 
@@ -316,6 +316,7 @@ class Zenodo(BaseModel):
         
         #update + set private attributes
         self._title = self.pipeline_name
+        print(self._title)
         self._version = str(most_recent_run["version"])
         self._run_id = str(most_recent_run["run_id"])
         self._git_url = create_pipeline_data["git_url"]
@@ -531,11 +532,11 @@ class Zenodo(BaseModel):
         return response.json()
 
 
-    def _create_new_zenodo_entry(self, payload: dict) -> int:
+    def _create_new_zenodo_entry(self, payload: dict) -> dict[str, Any]:
         """
         Create new zenodo entry.
         Returns:
-            tuple: deposition id and bucket url for new entry.
+            dict: Dictionary containing record information.
         Raises:
             HTTPException: If there is an error creating the entry.
         """
@@ -559,31 +560,59 @@ class Zenodo(BaseModel):
         logger.info("Zenodo entry created successfully")
         
         create_doi = self._reserve_draft_doi(r.json()["id"])
-        return create_doi #record id
+        return create_doi
     
 
-    def _update_existing_zenodo_entry(self, existing_entry: dict, metadata: dict) -> None:
+    def _update_existing_zenodo_entry(self, existing_entry: dict, payload: dict) -> dict[str, Any]:
         """
         Update existing zenodo entry with new metadata.
         Raises:
             HTTPException: If there is an error updating the entry."""
         
-        data = {"metadata": metadata}
-        url = "https://sandbox.zenodo.org/api/deposit/depositions/{}".format(existing_entry["deposit_id"])
+        url = "https://sandbox.zenodo.org/api/records/{}/draft".format(existing_entry["record_id"])
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {os.getenv('SANDBOX_TOKEN')}"}
+        auth_headers = {
+            "Authorization": f"Bearer {os.getenv('SANDBOX_TOKEN')}",
+        }
+
+        json_headers = {
+            "Authorization": f"Bearer {os.getenv('SANDBOX_TOKEN')}",
+            "Content-Type": "application/json",
+        }
 
         try:
-            r = requests.put(url, data=json.dumps(data), headers=headers)
+            r = requests.post(url, headers=auth_headers)
 
         except Exception as error:
-            raise HTTPException(status_code=400, detail=f"Error updating existing zenodo entry: {error}")
+            raise HTTPException(status_code=400, detail=f"Error creating new editable draft for exisitng entry: {error}")
         
-        if r.status_code == '401' or r.status_code == '400':
-            raise HTTPException(status_code=r.status_code, detail=f"Error uploading dataset to zenodo with error code: {r.status_code}")
-        logger.info("Zenodo entry updated successfully")
+        if r.status_code not in (200, 201):
+            r = requests.get(
+                f"https://sandbox.zenodo.org/api/records/{existing_entry['record_id']}/draft",
+                headers=auth_headers,
+            )
+        r.raise_for_status()
+        draft = r.json()
+        payload_v2 = payload.copy()
 
-    
-    def _new_version(self, existing_entry: dict, metadata: dict) -> tuple[int, str]:
+        try:
+            r = requests.put(
+                f"https://sandbox.zenodo.org/api/records/{existing_entry['record_id']}/draft",
+                headers=json_headers,
+                json=payload_v2,
+            )
+        except Exception as error:
+            raise HTTPException(status_code=400, detail=f"Error updating existing entry on Zenodo with new metadata: {error}")
+
+        logger.info(f"Updating existing Zenodo entry with new metadata. Status code: {r.status_code}")
+        logger.info(f"Response from Zenodo: {r.text}")
+        r.raise_for_status()
+        
+        logger.info("Zenodo entry updated successfully")
+        return r.json()
+
+
+    def _new_version(self, existing_entry: dict, payload: dict) -> dict[str, Any]:
 
         """
         Create new version of existing zenodo entry.
@@ -592,29 +621,39 @@ class Zenodo(BaseModel):
         Raises:
             HTTPException: If there is an error creating new version.
         """
+        auth_headers = {
+            "Authorization": f"Bearer {os.getenv('SANDBOX_TOKEN')}",
+        }
 
-        url = "https://sandbox.zenodo.org/api/deposit/depositions/{}/actions/newversion".format(existing_entry["deposit_id"])
-        headers = {"Authorization": f"Bearer {os.getenv('SANDBOX_TOKEN')}"}
+        json_headers = {
+            "Authorization": f"Bearer {os.getenv('SANDBOX_TOKEN')}",
+            "Content-Type": "application/json",
+        }
 
         try:
-            r = requests.post(url, headers=headers)
-
+            r = requests.post(f"https://sandbox.zenodo.org/api/records/{existing_entry['record_id']}/versions", headers=auth_headers)
         except Exception as error:
-            raise HTTPException(status_code=400, detail=f"Error creating new version of existing zenodo entry: {error}")
+            raise HTTPException(status_code=400, detail=f"Error creating new version for existing entry: {error}")
         
-        if r.status_code == '401' or r.status_code == '400':
-            raise HTTPException(status_code=r.status_code, detail=f"Error uploading dataset to zenodo with error code: {r.status_code}")
-        logger.info("New version of zenodo entry created successfully")
+        if r.status_code not in (200, 201):
+            raise HTTPException(status_code=r.status_code, detail=f"Error creating new version for existing entry with error code: {r.status_code}")
+        
+        logger.info(f"New version created successfully for {existing_entry['title']}")
+        record_id = r.json()["id"]
 
-        #grab new deposition id and bucket url to upload files to new version
-        latest_draft_url = r.json()["links"]["latest_draft"]
-        r = requests.get(latest_draft_url, headers=headers)
-        r.raise_for_status()
-        new_deposit_id = r.json()["id"]
-        bucket_url = r.json()["links"]["bucket"]
-        #First, update the new version entry with updated metadata
-        self._update_existing_zenodo_entry({"deposit_id": new_deposit_id}, metadata)
-        return new_deposit_id, bucket_url
+        try:
+            r = requests.put(
+                f"https://sandbox.zenodo.org/api/records/{record_id}/draft",
+                headers=json_headers,
+                json=payload,
+            )
+        except Exception as error:
+            raise HTTPException(status_code=400, detail=f"Error updating new version with metadata: {error}")
+        
+        logger.info(f"Updated new version with metadata. Status code: {r.status_code}")
+        return r.json()
+
+
 
     
     async def zenodo_upload(self) -> dict[str, str]:
@@ -637,20 +676,16 @@ class Zenodo(BaseModel):
             existing_zenodo_entry, update_existing = operation
             if update_existing:
                 logger.info("Updating existing Zenodo sandbox entry")
-                self._update_existing_zenodo_entry(existing_zenodo_entry, metadata)
-                deposit_id = existing_zenodo_entry["deposit_id"]
-                bucket_url = existing_zenodo_entry["bucket_url"]            
+                record = self._update_existing_zenodo_entry(existing_zenodo_entry, payload)           
             else:
                 logger.info("Creating new version of existing Zenodo sandbox entry")
-                deposit_id, bucket_url = self._new_version(existing_zenodo_entry, metadata)
+                record = self._new_version(existing_zenodo_entry, payload)
 
         else:
             logger.info("Creating new Zenodo sandbox entry")
             record = self._create_new_zenodo_entry(payload)
-            record_id = record["id"]
-            doi = record.get("doi", "")
 
-
+        record_id = record["id"]
         #Upload files to zenodo sandbox only if new entry or new version
         if not operation or not update_existing:
             # get files to be uploaded to Zenodo
@@ -702,34 +737,44 @@ class Zenodo(BaseModel):
             if response.status_code == '401' or response.status_code == '400':
                 raise HTTPException(status_code=response.status_code, detail=f"Error uploading dataset to zenodo with error code: {response.status_code}")
 
-            #publish the new zenodo entry in the sandbox environment to activate download links
-            try:
-                response = requests.post(
-                    f"https://sandbox.zenodo.org/api/records/{record_id}/draft/actions/publish",
-                    headers={
-                        "Authorization": f"Bearer {os.getenv('SANDBOX_TOKEN')}",
-                    },
-                )
-                logger.info("Zenodo sandbox entry published successfully")
-            except Exception as error:
-                logger.error(f"Error publishing new Zenodo entry: {error}")
-                raise HTTPException(status_code=response.status_code, detail=f"Error publishing new Zenodo entry: {response.status_code}")
-        
             #create download links for each file uploaded and to list
             download_links = {}
             for filename in files:
-                download_links[filename] = f"https://sandbox.zenodo.org/records/{record_id}/files/{filename.split('/')[-1]}?download=1"
+                download_links[filename.split('/')[-1]] = f"https://sandbox.zenodo.org/records/{record_id}/files/{filename.split('/')[-1]}?download=1"
 
+
+
+        #publish the zenodo entry in the sandbox environment to activate download links
+        try:
+            response = requests.post(
+                f"https://sandbox.zenodo.org/api/records/{record_id}/draft/actions/publish",
+                headers={
+                    "Authorization": f"Bearer {os.getenv('SANDBOX_TOKEN')}",
+                },
+            )
+            logger.info("Zenodo sandbox entry published successfully")
+        except Exception as error:
+            logger.error(f"Error publishing Zenodo entry: {error}")
+            raise HTTPException(status_code=response.status_code, detail=f"Error publishing new Zenodo entry: {response.status_code}")
+    
         #create entry in zenodo_sandbox collection in db
         zenodo_entry = payload['metadata']
-        zenodo_entry["record_id"] = record_id
-        zenodo_entry["doi"] = doi
+        zenodo_entry["record_id"] = record_id 
+        zenodo_entry["doi"] = record.get("doi", "") if record.get("doi") else response.json().get("doi", "") # use doi from record
+        zenodo_entry["parent_id"] = (
+            record.get("conceptrecid")
+            or record.get("metadata")
+                .get("relations", {})
+                .get("version", [{}])[0]
+                .get("parent", {})
+                .get("pid_value")
+            )
 
         #bucket url and download links only set if new entry or new version else set to existing values in most recent zenodo entry
         zenodo_entry["download_links"] = download_links if not operation or not update_existing else existing_zenodo_entry["download_links"]
 
         zenodo_entry["date_uploaded"] = datetime.now(timezone.utc).isoformat()
-        zenodo_entry["sandbox_url"] = f"https://sandbox.zenodo.org/records/{record_id}"
+        zenodo_entry["sandbox_url"] = f"https://sandbox.zenodo.org/records/{zenodo_entry['record_id']}"
         await zenodo_sandbox_collection.insert_one(zenodo_entry)
         return {"sandbox_url": zenodo_entry["sandbox_url"],
                 "success": True}
