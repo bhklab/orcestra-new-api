@@ -104,8 +104,6 @@ async def run_pipeline(data: RunPipeline) -> dict:
                 "large_machine_use": pipeline.large_machine_use,
                 "pipeline_run_command": pipeline.pipeline_run_command,
                 "qc_command": pipeline.qc_command,
-                "qc_output_directory": pipeline.qc_output_directory,
-
                 "updated_at": now,
             }
 

@@ -156,7 +156,6 @@ class RunPipeline(BaseModel):
     large_machine_use: bool = False
     pipeline_run_command: Optional[str] = ""
     qc_command: Optional[str] = ""
-    qc_output_directory: Optional[str] = "" 
     new_release: bool = False
     
     @staticmethod
@@ -212,7 +211,6 @@ class RunPipeline(BaseModel):
 
             "PIPELINE_RUN_COMMAND": self.pipeline_run_command or "",
             "QC_COMMAND": self.qc_command or "",
-            "QC_OUTPUT_DIRECTORY": self.qc_output_directory or "",
             "LARGE_MACHINE_USE": str(self.large_machine_use).lower(),
 
         }
