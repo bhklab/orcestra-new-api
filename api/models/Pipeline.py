@@ -17,7 +17,7 @@ from typing import (
 
 from api.core.exec import execute_command
 from api.core.sendgird_email import send_email
-from api.core.inject_deps import inject_deps_conda, inject_deps_pixi
+from api.core.checksum import calculate_checksums
 from git import Repo
 from pydantic import (
     BaseModel, 
@@ -272,6 +272,7 @@ class Zenodo(BaseModel):
     _version: str = PrivateAttr()
     _run_id: str = PrivateAttr(default = "")
     _git_url: str = PrivateAttr(default = None)
+    _run_object: Any = PrivateAttr(default = None)
     
 
 
@@ -317,6 +318,7 @@ class Zenodo(BaseModel):
         self._version = str(most_recent_run["version"])
         self._run_id = str(most_recent_run["run_id"])
         self._git_url = create_pipeline_data["git_url"]
+        self._run_object = most_recent_run["_id"]
 
         #check if this version has already been uploaded to zenodo sanbox
         existing_zenodo_entry = await zenodo_sandbox_collection.find_one({"title": self._title}, sort = [("date_uploaded", -1)])
@@ -445,7 +447,7 @@ class Zenodo(BaseModel):
         #Iterate through private attributes and add to metadata dictionary with underscore removed from name.
         for name in self.__private_attributes__:
                 
-                if name == "_run_id":
+                if name == "_run_id" or name == "_run_object":
                     continue
 
                 if name == "_git_url":
@@ -682,6 +684,61 @@ class Zenodo(BaseModel):
         logger.info(f"Response from Zenodo: {r.text}")
         return r.json()
 
+    def _compute_checksums(self) -> Tuple[bool, dict]:
+
+        """
+        Compute checksums for output files to be uploaded to Zenodo and compare to initial checksums in checksum manifest.
+        Returns:
+            Tuple[bool, dict]: Boolean indicating whether checksums match and dictionary of initial checksums from manifest.
+        """
+
+        logger.info("Computing checksums for output files to be uploaded to Zenodo")
+        path = Path(f"/mnt/gcs/nicholas-testing/pipelines/{self.pipeline_name}/{self._run_id}")
+        with open(path  / 'checksum_manifest.json', 'r', encoding='utf-8') as file:
+            initial_checksums = json.load(file)["files"]
+
+        if not path.exists():
+            logger.warning(f"Output path does not exist: {path}")
+            return False, initial_checksums
+        files = [str(p) for p in path.rglob('*') if p.is_file()]
+        for file in files:
+            filename = file.split('/')[-1]
+            if filename == 'checksum_manifest.json':
+                continue
+            if filename not in initial_checksums:
+                logger.warning(f"File {filename} not found in initial checksum manifest.")
+                return False, initial_checksums
+            calculated_checksums = calculate_checksums(Path(file))
+            if calculated_checksums["sha256"] != initial_checksums[filename]["sha256"] or calculated_checksums["md5"] != initial_checksums[filename]["md5"]:
+                logger.warning(f"Checksum mismatch for file {filename}. Expected sha256: {initial_checksums[filename]['sha256']}, calculated sha256: {calculated_checksums['sha256']}. Expected md5: {initial_checksums[filename]['md5']}, calculated md5: {calculated_checksums['md5']}")
+                return False, initial_checksums
+
+        logger.info("All checksums match for output files to be uploaded to Zenodo")
+        return True, initial_checksums
+
+    def _md5_zenodo_validation(self, record_files: List[dict], local_checksums: dict) -> bool:
+        """
+        Validate that md5 checksums for files uploaded to Zenodo match local checksums.
+        Args:
+            record_files (List[dict]): List of files in zenodo record with their metadata.
+            local_checksums (dict): Dictionary of local checksums for files to be uploaded.
+        Returns:
+            bool: True if all md5 checksums match and False otherwise.
+        """
+        logger.info("Validating md5 checksums for files uploaded to Zenodo")
+        for record_file in record_files:
+            filename = record_file["key"]
+            zenodo_md5 = record_file["checksum"].split("md5:")[-1]
+            if filename not in local_checksums:
+                logger.warning(f"File {filename} not found in local checksums for md5 validation.")
+                return False
+            local_md5 = local_checksums[filename]["md5"]
+            if zenodo_md5 != local_md5:
+                logger.warning(f"MD5 checksum mismatch for file {filename}. Local md5: {local_md5}, Zenodo md5: {zenodo_md5}")
+                return False
+
+        logger.info("All md5 checksums match for files uploaded to Zenodo")
+        return True
 
 
     
@@ -699,6 +756,9 @@ class Zenodo(BaseModel):
         #Upload pipeline results to Zenodo sandbox.
         logger.info("Checking that pipeline exists in database and retrieving most recent run information")
         operation = await self._validate_pipeline_exists()
+        checksums_valid, file_metadata = self._compute_checksums()
+        if not checksums_valid:
+            raise HTTPException(status_code=400, detail=f"Output files for this pipeline run not found in expected location: /mnt/gcs/nicholas-testing/pipelines/{self.pipeline_name}/{self._run_id} or checksums do not match" )
         payload = self._structure_metadata()
         #Determine whether to create new entry, update existing entry, or create new version
         if operation:
@@ -722,6 +782,7 @@ class Zenodo(BaseModel):
             path = Path(path_prefix) / self.pipeline_name / self._run_id
             
             files = [str(p) for p in Path(path).rglob('*') if p.is_file()]
+            files.remove(str(path / 'checksum_manifest.json')) # remove checksum manifest from list of files to upload
             # upload output files to new Zenodo entry
             logger.info(f"Files to upload: {files}")
             if not files:
@@ -789,9 +850,17 @@ class Zenodo(BaseModel):
         except Exception as error:
             logger.error(f"Error publishing Zenodo entry: {error}")
             raise HTTPException(status_code=response.status_code, detail=f"Error publishing new Zenodo entry: {response.status_code}")
-    
+
+        #check zenodo checksum md5 with local file checksums and if mismatch, delete zenodo entry and raise error
+        if not self._md5_zenodo_validation(response.json()["files"], file_metadata):
+            self._delete_draft(record_id)
+            logger.error("MD5 checksum validation failed for files uploaded to Zenodo. Deleting Zenodo entry.")
+            raise HTTPException(status_code=400, detail="MD5 checksum validation failed for files uploaded to Zenodo. The Zenodo entry has been deleted. Please try uploading again.")
+        
         #create entry in zenodo_sandbox collection in db
         zenodo_entry = payload['metadata']
+        zenodo_entry["file_metadata"] = file_metadata
+        zenodo_entry["run_object_id"] = self._run_object
         zenodo_entry["record_id"] = record_id 
         zenodo_entry["doi"] = record.get("doi", "") if record.get("doi") else response.json().get("doi", "") # use doi from record
         zenodo_entry["parent_id"] = (
