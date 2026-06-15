@@ -42,7 +42,7 @@ async def delete_pipeline_endpoint(pipeline_name: str):
         raise HTTPException(status_code=400, detail="Validation error: " + str(e.errors()))
 
 
-@router.post('/internal/jenkins/stage-event', response_model=Dict)
+@router.post('/internal/jenkins/stage-event', response_model=Dict, include_in_schema=False)
 async def update_pipeline_run_status_endpoint(
     data: JenkinsStageEvent,
     x_jenkins_token: str = Header(default="")
