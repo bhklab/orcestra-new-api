@@ -28,7 +28,7 @@ async def get_manifest_data(data: str) -> dict:
     if most_recent_run is None:
         raise HTTPException(status_code=400, detail=f"{pipeline_name} has no recorded successful runs.")
     
-    file_path = f'/mnt/gcs/nicholas-testing/pipelines/{pipeline_name}/{most_recent_run["run_id"]}'
+    file_path = f'/mnt/gcs/nicholas-testing/pipelines/{pipeline_name}/{most_recent_run["run_id"]}/checksum_manifest.json'
 
     with open(file_path, 'r', encoding='utf-8') as file:
         manifest_file_data = json.load(file)
