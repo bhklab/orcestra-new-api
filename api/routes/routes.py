@@ -14,6 +14,7 @@ from api.routes.run.run import run_pipeline
 from api.routes.delete.delete import delete_pipeline
 from api.routes.zenodo.zenodo import zenodo_upload
 from api.routes.jenkins.update_pipeline_run_status import update_pipeline_run_status
+from api.routes.manifest.manifest import get_manifest_data
 from typing import Dict
 import os
 JENKINS_STAGE_EVENT_TOKEN = os.getenv("JENKINS_STAGE_EVENT_TOKEN")
@@ -60,3 +61,11 @@ async def zenodo_upload_endpoint(data: Zenodo):
         return await zenodo_upload(data)
     except ValidationError as e:
         raise HTTPException(status_code=400, detail="Validation error: " + str(e.errors()))
+
+@router.get('/manifest', response_model=Dict)
+async def get_manifest(data: Dict):
+    try:
+        # Assuming you have a function to get the manifest
+        return await get_manifest_data()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Error retrieving manifest: " + str(e))
