@@ -13,9 +13,9 @@ database = get_database()
 create_snakemake_pipeline_collection = database["create_snakemake_pipeline"]
 ran_pipelines_collection = database["run_snakemake_pipeline"]
 
-async def get_manifest_data(data: dict) -> dict:
+async def get_manifest_data(data: str) -> dict:
 
-    pipeline_name = data.get("pipeline_name")
+    pipeline_name = data
     if not pipeline_name:
         raise HTTPException(status_code=400, detail="pipeline_name is required")
 

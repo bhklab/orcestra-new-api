@@ -62,10 +62,10 @@ async def zenodo_upload_endpoint(data: Zenodo):
     except ValidationError as e:
         raise HTTPException(status_code=400, detail="Validation error: " + str(e.errors()))
 
-@router.get('/manifest', response_model=Dict)
-async def get_manifest(data: Dict):
+@router.get("/manifest/{pipeline_name}", response_model=Dict)
+async def get_manifest(pipeline_name: str):
     try:
         # Assuming you have a function to get the manifest
-        return await get_manifest_data()
+        return await get_manifest_data(pipeline_name)
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error retrieving manifest: " + str(e))
