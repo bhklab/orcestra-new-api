@@ -811,7 +811,7 @@ class Zenodo(BaseModel):
                     path = Path(filename)
                     if not path.exists() or not path.is_file():
                         self._delete_draft(record_id)
-                        raise HTTPException(status_code=400, detail=f"{path} not found in files to upload to Zenodo")
+                        logger.error(f'{path} not found in files to upload')
 
                     with path.open("rb") as fp:
                         response = requests.put(
